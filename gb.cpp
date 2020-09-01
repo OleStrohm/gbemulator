@@ -2,6 +2,7 @@
 
 #include "instructions.h"
 #include "utils.h"
+#include <iostream>
 
 bool CPU::step() {
   bool breakpoint = false;
@@ -30,6 +31,9 @@ bool CPU::step() {
     else
       registers.pc--;
   }
+
+  if(registers.pc < 0xc)
+	  breakpoint = true;
 
   return breakpoint;
 }

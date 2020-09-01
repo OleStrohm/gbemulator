@@ -1,4 +1,4 @@
-SOURCE = gb.cpp instructions.cpp
+SOURCE = gb.cpp instructions.cpp utils.cpp
 
 gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	g++ -std=c++17 -o ./build/gameboy $(SOURCE)

@@ -8,10 +8,10 @@
 #include <string>
 
 namespace instruction {
-enum : int { NoInstruction = 0, Nop, Load, ALU, Jump, RST, Unsupported };
+enum : int { NoInstruction = 0, Nop, Load, ALU, Jump, RST, CB, Unsupported };
 }
 
-enum Condition { Unconditional, NotZero, Zero, NotCarry, Carry };
+enum class Condition { Unconditional, NotZero, Zero, NotCarry, Carry };
 
 class Instruction {
 protected:
@@ -33,6 +33,23 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class ExtendedInstruction : public Instruction {
+  uint8_t instruction;
+  uint16_t address;
+  bool gotAddress;
+
+public:
+  ExtendedInstruction();
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual void amend(uint8_t val) override;
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class RST : public Instruction {
   uint8_t n;
@@ -97,10 +114,12 @@ public:
 class Jump : public Instruction {
   uint16_t addr;
   uint8_t needsBytes;
+  bool isDisplacement;
   Condition condition;
+  bool checkedCondition;
 
 public:
-  Jump(uint8_t needsBytes, Condition condition);
+  Jump(bool isDisplacement, Condition condition);
 
   static std::unique_ptr<Instruction> decode(uint8_t opcode);
 
