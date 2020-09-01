@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
   auto file = util::readFile(argv[1]);
 
   cpu.loadRom(file);
-  cpu.loadBoot(util::readFile("bootsector.bin"));
+  cpu.loadBoot(util::readFile("boot.bin"));
   cpu.dumpRom();
 
   while (!cpu.hasHalted()) {
