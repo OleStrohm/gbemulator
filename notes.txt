@@ -1,0 +1,3 @@
+Poorly implemented features:
+  * N flag is not implemented in the ALU.
+  * Jump does not have the correct delay.
