@@ -26,10 +26,14 @@ void printfBits(std::string msg, int n, int bits, bool newline) {
 }
 
 void hexdump(std::vector<uint8_t> hex) {
-	hexdump(hex, hex.size());
+	hexdump(hex, hex.size(), 0);
 }
 
 void hexdump(std::vector<uint8_t> hex, size_t length) {
+	hexdump(hex, length, 0);
+}
+
+void hexdump(std::vector<uint8_t> hex, size_t length, size_t base) {
   std::string charview;
   bool wasCopy = false;
 
@@ -64,7 +68,7 @@ void hexdump(std::vector<uint8_t> hex, size_t length) {
 
     int b = hex[c];
     if (c % 16 == 0)
-      printf("%08x: ", c);
+      printf("%08lx: ", base + c);
     printf("%02x ", b);
     if (std::isprint(b))
       charview += b;
@@ -90,7 +94,7 @@ void hexdump(std::vector<uint8_t> hex, size_t length) {
     }
   }
   if (wasCopy)
-    printf("%08x:\n", c);
+    printf("%08x:\n", base + c);
 }
 
 } // namespace util

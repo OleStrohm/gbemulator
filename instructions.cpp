@@ -794,9 +794,9 @@ std::unique_ptr<Instruction> Load::decode(uint8_t opcode) {
     return std::make_unique<Load>(1, false, false, false);
   if (opcode == 0b11100010)
     return std::make_unique<Load>(0, true, false, false);
-  if (opcode == 0b11100000)
-    return std::make_unique<Load>(1, true, false, false);
   if (opcode == 0b11110010)
+    return std::make_unique<Load>(1, true, false, false);
+  if (opcode == 0b11101010)
     return std::make_unique<Load>(0, false, true, false);
   if (opcode == 0b11111010)
     return std::make_unique<Load>(1, false, true, false);
@@ -1032,22 +1032,19 @@ bool Jump::execute(CPU *cpu) {
       LOG("Jumped to %04X\n", cpu->getRegisters().pc);
     }
   } else if (!checkedCondition) {
+    checkedCondition = true;
     if (condition == Condition::NotZero &&
         (flags & (1 << 7)) == 0) { // Not Zero
-      checkedCondition = true;
       return false;
     }
-    if (condition == Condition::Zero && (flags & (1 << 7)) == 1) { // Zero
-      checkedCondition = true;
+    if (condition == Condition::Zero && (flags & (1 << 7)) != 0) { // Zero
       return false;
     }
     if (condition == Condition::NotCarry &&
         (flags & (1 << 4)) == 0) { // Not Carry
-      checkedCondition = true;
       return false;
     }
-    if (condition == Condition::Carry && (flags & (1 << 4)) == 1) { // Carry
-      checkedCondition = true;
+    if (condition == Condition::Carry && (flags & (1 << 4)) != 0) { // Carry
       return false;
     }
   }

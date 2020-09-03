@@ -30,39 +30,8 @@ public:
   bool hasHalted() { return halted; }
   RegisterBank &getRegisters() { return registers; }
 
-  uint8_t read(uint16_t addr) {
-    if (addr < 0x8000)
-      return rom[addr];
-    if (addr >= 0x8000 && addr < 0xA000)
-      return vram[addr - 0x8000];
-    if (addr >= 0xC000 && addr < 0xD000)
-      return ram0[addr - 0xC000];
-    if (addr >= 0xFF80 && addr <= 0xFFFE)
-      return zeropage[addr - 0xFF80];
-
-    printf("ERROR: READ MEMORY OUT OF BOUNDS : %04X\n", addr);
-    return 0xFF;
-  }
-
-  void write(uint16_t addr, uint8_t value) {
-    if (addr < 0x8000)
-      rom[addr] = value;
-    else if (addr >= 0x8000 && addr < 0xA000)
-      vram[addr - 0x8000] = value;
-    else if (addr >= 0xC000 && addr < 0xD000)
-      ram0[addr - 0xC000] = value;
-    else if (addr >= 0xFF00 && addr < 0xFF4C) {
-      if (addr == 0xFF26) {
-        if (value >> 7)
-          printf("Enabled Audio\n");
-        else
-          printf("Disabled Audio\n");
-      }
-    } else if (addr >= 0xFF80 && addr <= 0xFFFE)
-      zeropage[addr - 0xFF80] = value;
-    else
-      printf("ERROR: WRITE MEMORY OUT OF BOUNDS\n");
-  }
+  uint8_t read(uint16_t addr);
+  void write(uint16_t addr, uint8_t value);
 
   void loadRom(std::vector<uint8_t> rom) {
     auto biosSize = rom.size();

@@ -15,7 +15,7 @@ bool CPU::step() {
       printf("\tInstruction: %s\n", instr->getName().c_str());
     }
 
-    if (instr->getType() == instruction::Nop)
+    if (instr->getType() == instruction::Unsupported)
       breakpoint = true;
   } else if (!instr->isFinished()) {
     instr->amend(opcode);
@@ -30,15 +30,49 @@ bool CPU::step() {
       registers.pc--;
   }
 
-  if(registers.pc == 0x34)
-	  breakpoint = true;
+  if (registers.pc == 0x55)
+    breakpoint = true;
 
   return !breakpoint;
 }
 
+uint8_t CPU::read(uint16_t addr) {
+  if (addr < 0x8000)
+    return rom[addr];
+  if (addr >= 0x8000 && addr < 0xA000)
+    return vram[addr - 0x8000];
+  if (addr >= 0xC000 && addr < 0xD000)
+    return ram0[addr - 0xC000];
+  if (addr >= 0xFF80 && addr <= 0xFFFE)
+    return zeropage[addr - 0xFF80];
+
+  printf("ERROR: READ MEMORY OUT OF BOUNDS : %04X\n", addr);
+  return 0xFF;
+}
+
+void CPU::write(uint16_t addr, uint8_t value) {
+  if (addr < 0x8000)
+    rom[addr] = value;
+  else if (addr >= 0x8000 && addr < 0xA000)
+    vram[addr - 0x8000] = value;
+  else if (addr >= 0xC000 && addr < 0xD000)
+    ram0[addr - 0xC000] = value;
+  else if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF26) {
+      if (value >> 7)
+        printf("Enabled Audio\n");
+      else
+        printf("Disabled Audio\n");
+    } else
+		printf("Wrote to IO at %04X\n", addr);
+  } else if (addr >= 0xFF80 && addr <= 0xFFFE)
+    zeropage[addr - 0xFF80] = value;
+  else
+    printf("ERROR: WRITE MEMORY OUT OF BOUNDS\n");
+}
 void CPU::dumpRom() { util::hexdump(rom, 0x1000); }
 
-void CPU::dumpVRam() { util::hexdump(vram); }
+void CPU::dumpVRam() { util::hexdump(vram, vram.size(), 0x8000); }
 
 void CPU::dumpRegisters() {
   printf("        == Registers ===\n");
@@ -91,8 +125,8 @@ int main(int argc, char **argv) {
           return 0;
         else if (in == "r") {
           cpu.dumpRegisters();
-		}  else if (in == "dvr") {
-			cpu.dumpVRam();
+        } else if (in == "dvr") {
+          cpu.dumpVRam();
         } else
           moveOn = true;
       }
