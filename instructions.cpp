@@ -8,6 +8,140 @@
   if (!instr)                                                                  \
   instr = X::decode(opcode)
 
+Ret::Ret(Condition condition, bool enableInterrupts)
+    : condition(condition), enableInterrupts(enableInterrupts), currentByte(0) {
+  finished = true;
+}
+
+std::unique_ptr<Instruction> Ret::decode(uint8_t opcode) {
+  Condition conditions[] = {Condition::NotZero, Condition::Zero,
+                            Condition::NotCarry, Condition::Carry};
+
+  if (((opcode >> 5) & 0x7) == 0b110 && (opcode & 0x7) == 0b000)
+    return std::make_unique<Ret>(conditions[(opcode >> 3) & 0x3], false);
+  if (opcode == 0b11001001)
+    return std::make_unique<Ret>(Condition::Unconditional, false);
+  if (opcode == 0b11011001)
+    return std::make_unique<Ret>(Condition::Unconditional, true);
+
+  return nullptr;
+}
+
+bool Ret::execute(CPU *cpu) {
+  uint8_t flags = cpu->getRegisters().f;
+  if (condition != Condition::Unconditional) {
+    if (!wastedCycle) {
+      wastedCycle = true;
+      return false;
+    }
+
+    if (!checkedCondition) {
+      if (condition == Condition::NotZero &&
+          (flags & (1 << 7)) == 0) // Not Zero
+        return true;
+      if (condition == Condition::Zero && (flags & (1 << 7)) == 1) // Zero
+        return true;
+      if (condition == Condition::NotCarry &&
+          (flags & (1 << 4)) == 0) // Not Carry
+        return true;
+      if (condition == Condition::Carry && (flags & (1 << 4)) == 1) // Carry
+        return true;
+
+      checkedCondition = true;
+      return false;
+    }
+  }
+
+  if (currentByte != 2) {
+    address = (address >> 8) | (cpu->read(cpu->getRegisters().sp));
+    cpu->getRegisters().sp += 1;
+    currentByte++;
+
+    return false;
+  }
+
+  cpu->getRegisters().pc = address;
+
+  return true;
+}
+
+std::string Ret::getName() {
+  return enableInterrupts
+             ? "Reti"
+             : (condition == Condition::Unconditional ? "Ret" : "Ret F");
+}
+
+int Ret::getType() { return instruction::Ret; }
+
+RotateA::RotateA(bool isLeft, bool throughCarry)
+    : isLeft(isLeft), throughCarry(throughCarry) {
+  finished = true;
+}
+
+std::unique_ptr<Instruction> RotateA::decode(uint8_t opcode) {
+  if (((opcode >> 5) & 0x7) == 0b000 && (opcode & 0x7) == 0b111)
+    return std::make_unique<RotateA>(((opcode >> 3) & 0x1) == 0,
+                                     (opcode >> 4) & 0x1);
+
+  return nullptr;
+}
+
+bool RotateA::execute(CPU *cpu) {
+  uint8_t &result = cpu->getRegisters().a;
+  uint8_t &flags = cpu->getRegisters().f;
+
+  if (throughCarry) {
+    if (isLeft) {
+      LOG("Rotate A left\n");
+      bool carrySet = (flags & (1 << 4)) == (1 << 4);
+      flags &= 0b11101111;
+      if (result & 0x80)
+        flags |= 1 << 4;
+
+      result = result << 1;
+      if (carrySet)
+        result |= 1;
+    } else {
+      LOG("Rotate A right\n");
+      bool carrySet = (flags & (1 << 4)) == (1 << 4);
+      flags &= 0b11101111;
+      if (result & 0x1)
+        flags |= 1 << 4;
+
+      result = result >> 1;
+      if (carrySet)
+        result |= 0x80;
+    }
+  } else {
+    if (isLeft) {
+      LOG("Rotate A left (without carry)\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x80) == 0x80;
+      if (carrySet)
+        flags |= 1 << 4;
+
+      result = result << 1;
+      if (carrySet)
+        result |= 1;
+    } else {
+      LOG("Rotate A right (without carry)\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x1) == 0x1;
+      if (carrySet)
+        flags |= 1 << 4;
+
+      result = result >> 1;
+      if (carrySet)
+        result |= 0x80;
+    }
+  }
+
+  return true;
+}
+
+std::string RotateA::getName() { return throughCarry ? "RdA" : "RdCA"; }
+int RotateA::getType() { return instruction::RotateA; }
+
 PopPush::PopPush(uint8_t reg, bool isPop)
     : reg(reg), isPop(isPop), currentByte(0), hasWastedCycle(isPop) {
   finished = true;
@@ -37,13 +171,16 @@ bool PopPush::execute(CPU *cpu) {
   if (isPop) {
     ((uint8_t *)registerMapping[reg])[currentByte] =
         cpu->read(cpu->getRegisters().sp);
-    LOG("POP %s (%02X to %04X)\n", registerNames[currentByte][reg].c_str(), ((uint8_t *)registerMapping[reg])[currentByte], cpu->getRegisters().sp);
+    LOG("POP %s (%02X from %04X)\n", registerNames[currentByte][reg].c_str(),
+        ((uint8_t *)registerMapping[reg])[currentByte], cpu->getRegisters().sp);
     cpu->getRegisters().sp++;
   } else {
     cpu->getRegisters().sp--;
     cpu->write(cpu->getRegisters().sp,
                ((uint8_t *)registerMapping[reg])[1 - currentByte]);
-    LOG("PUSH %s (%02X to %04X)\n", registerNames[1 - currentByte][reg].c_str(), ((uint8_t *)registerMapping[reg])[1 - currentByte], cpu->getRegisters().sp);
+    LOG("PUSH %s (%02X to %04X)\n", registerNames[1 - currentByte][reg].c_str(),
+        ((uint8_t *)registerMapping[reg])[1 - currentByte],
+        cpu->getRegisters().sp);
   }
 
   currentByte++;
@@ -109,7 +246,7 @@ bool Call::execute(CPU *cpu) {
   }
 
   cpu->getRegisters().pc = address;
-  LOG("Call jump to %04X", address);
+  LOG("Call jump to %04X\n", address);
 
   return true;
 }
@@ -139,6 +276,8 @@ std::unique_ptr<Instruction> IncDec::decode(uint8_t opcode) {
 }
 
 bool IncDec::execute(CPU *cpu) {
+  uint8_t &flags = cpu->getRegisters().f;
+
   if (isBigRegister) {
     uint16_t *registerMapping[]{
         &cpu->getRegisters().bc, &cpu->getRegisters().de,
@@ -146,7 +285,14 @@ bool IncDec::execute(CPU *cpu) {
 
     uint16_t *dest = registerMapping[destination];
 
-    *dest = *dest + 1;
+    if (increment)
+      *dest = *dest + 1;
+    else
+      *dest = *dest - 1;
+
+    flags &= 0b00010000;
+    if (*dest == 0)
+      flags |= 0b10000000;
   } else {
     uint8_t *registerMapping[] = {&cpu->getRegisters().b,
                                   &cpu->getRegisters().c,
@@ -172,9 +318,27 @@ bool IncDec::execute(CPU *cpu) {
         return false;
       }
 
-      cpu->write(address, storedValue + 1);
+      if (increment)
+        cpu->write(address, storedValue + 1);
+      else
+        cpu->write(address, storedValue - 1);
+
+      flags &= 0b00010000;
+      if (increment) {
+        if (((*dest) + 1) == 0)
+          flags |= 0b10000000;
+        else if (((*dest) - 1) == 0)
+          flags |= 0b10000000;
+      }
     } else {
-      *dest = *dest + 1;
+      if (increment)
+        *dest = *dest + 1;
+      else
+        *dest = *dest - 1;
+
+      flags &= 0b00010000;
+      if (*dest == 0)
+        flags |= 0b10000000;
     }
   }
 
@@ -187,7 +351,7 @@ int IncDec::getType() {
 }
 
 ExtendedInstruction::ExtendedInstruction()
-    : instruction(0), address(0), gotAddress(0) {
+    : instruction(0), address(0), gotAddress(0), result(0), shouldWrite(false) {
   finished = false;
 }
 
@@ -220,28 +384,181 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     gotAddress = true;
     return false;
   }
-  uint8_t dest = gotAddress ? address : *registerMapping[instruction & 0x7];
+
+  if (shouldWrite) {
+    cpu->write(address, result);
+    return true;
+  }
+
+  result =
+      gotAddress ? cpu->read(address) : *registerMapping[instruction & 0x7];
   uint8_t &flags = cpu->getRegisters().f;
-  if (instruction >> 4 == 0b0000) {
+  if (instruction >> 4 == 0b0000) { // RdC D
+    bool isLeft = ((instruction >> 3) & 1) == 0;
+    if (isLeft) {
+      LOG("Rotate left (without carry\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x80) == 0x80;
+      if (carrySet)
+        flags |= 1 << 4;
 
-  } else if (instruction >> 4 == 0b0001) {
+      result = result << 1;
+      if (carrySet)
+        result |= 1;
 
-  } else if (instruction >> 4 == 0b0010) {
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    } else {
+      LOG("Rotate right (without carry\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x1) == 0x1;
+      if (carrySet)
+        flags |= 1 << 4;
 
-  } else if (instruction >> 3 == 0b00110) {
+      result = result >> 1;
+      if (carrySet)
+        result |= 0x80;
 
-  } else if (instruction >> 3 == 0b00111) {
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    }
+  } else if (instruction >> 4 == 0b0001) { // Rd D
+    bool isLeft = ((instruction >> 3) & 1) == 0;
+    if (isLeft) {
+      LOG("Rotate left\n");
+      bool carrySet = (flags & (1 << 4)) == (1 << 4);
+      flags &= 0b11101111;
+      if (result & 0x80)
+        flags |= 1 << 4;
 
-  } else if (instruction >> 6 == 0b01) { // bit
+      result = result << 1;
+      if (carrySet)
+        result |= 1;
+
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    } else {
+      LOG("Rotate right\n");
+      bool carrySet = (flags & (1 << 4)) == (1 << 4);
+      flags &= 0b11101111;
+      if (result & 0x1)
+        flags |= 1 << 4;
+
+      result = result >> 1;
+      if (carrySet)
+        result |= 0x80;
+
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    }
+  } else if (instruction >> 4 == 0b0010) { // sdA D
+    bool isLeft = ((instruction >> 3) & 1) == 0;
+    if (isLeft) {
+      LOG("Shift left\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x80) == 0x80;
+      if (carrySet)
+        flags |= 1 << 4;
+
+      result = result << 1;
+
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    } else {
+      LOG("Arithmetic shift right\n");
+      flags &= 0b11101111;
+      bool carrySet = (result & 0x1) == 0x1;
+      if (carrySet)
+        flags |= 1 << 4;
+
+      result = result >> 1;
+      if (result & 0b01000000)
+        result |= 0x80;
+
+      if (registerMapping[instruction & 0x7] != nullptr) {
+        *registerMapping[instruction & 0x7] = result;
+      } else {
+        shouldWrite = true;
+        return false;
+      }
+    }
+  } else if (instruction >> 3 == 0b00110) { // SWAP D
+    LOG("SWAP\n");
+    result = (result << 4) | (result >> 4);
+
+    if (registerMapping[instruction & 0x7] != nullptr) {
+      *registerMapping[instruction & 0x7] = result;
+    } else {
+      shouldWrite = true;
+      return false;
+    }
+  } else if (instruction >> 3 == 0b00111) { // SRL D
+    LOG("Logical shift right\n");
+    flags &= 0b11101111;
+    bool carrySet = (result & 0x1) == 0x1;
+    if (carrySet)
+      flags |= 1 << 4;
+
+    result = result >> 1;
+
+    if (registerMapping[instruction & 0x7] != nullptr) {
+      *registerMapping[instruction & 0x7] = result;
+    } else {
+      shouldWrite = true;
+      return false;
+    }
+  } else if (instruction >> 6 == 0b01) { // BIT N,D
+    LOG("Testing BIT\n");
     uint8_t n = (instruction >> 3) & 0x7;
 
     flags &= 0b00010000;
     flags |= 1 << 5;
-    if (((dest) & (1 << n)) == 0)
+    if (((result) & (1 << n)) == 0)
       flags |= 1 << 7;
-  } else if (instruction >> 6 == 0b10) {
+  } else if (instruction >> 6 == 0b10) { // RES N,D
+    LOG("Resetting BIT\n");
+    uint8_t n = (instruction >> 3) & 0x7;
 
-  } else if (instruction >> 6 == 0b11) {
+    result &= ~(1 << n);
+
+    if (registerMapping[instruction & 0x7] != nullptr) {
+      *registerMapping[instruction & 0x7] = result;
+    } else {
+      shouldWrite = true;
+      return false;
+    }
+  } else if (instruction >> 6 == 0b11) { // SET N,D
+    LOG("Setting BIT\n");
+    uint8_t n = (instruction >> 3) & 0x7;
+
+    result |= (1 << n);
+
+    if (registerMapping[instruction & 0x7] != nullptr) {
+      *registerMapping[instruction & 0x7] = result;
+    } else {
+      shouldWrite = true;
+      return false;
+    }
   }
 
   return true;
@@ -761,12 +1078,14 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
 
   DECODE(Nop);
   DECODE(IncDec);
+  DECODE(RotateA);
   DECODE(Load);
   DECODE(ALU);
   DECODE(PopPush);
+  DECODE(RST);
+  DECODE(Ret);
   DECODE(Jump);
   DECODE(Call);
-  DECODE(RST);
   DECODE(ExtendedInstruction);
   DECODE(Unsupported);
 

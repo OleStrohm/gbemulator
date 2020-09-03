@@ -25,6 +25,10 @@ void printfBits(std::string msg, int n, int bits, bool newline) {
     printf("\n");
 }
 
+void hexdump(std::vector<uint8_t> hex) {
+	hexdump(hex, hex.size());
+}
+
 void hexdump(std::vector<uint8_t> hex, size_t length) {
   std::string charview;
   bool wasCopy = false;

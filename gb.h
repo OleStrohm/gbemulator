@@ -18,6 +18,7 @@ class CPU {
   std::unique_ptr<Instruction> instr;
 
   bool halted = false;
+  bool breakpoint = false;
 
 public:
   CPU() : rom(0x8000), ram0(0x1000), vram(0x2000), zeropage(0xFFFE - 0xFF80) {
@@ -76,5 +77,6 @@ public:
   }
 
   void dumpRom();
+  void dumpVRam();
   void dumpRegisters();
 };

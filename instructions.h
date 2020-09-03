@@ -13,9 +13,11 @@ enum : int {
   Nop,
   Inc,
   Dec,
+  RotateA,
   Load,
   ALU,
   PopPush,
+  Ret,
   Jump,
   Call,
   RST,
@@ -47,8 +49,23 @@ namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
 
+class RotateA : public Instruction {
+  bool isLeft;
+  bool throughCarry;
+
+public:
+  RotateA(bool isLeft, bool throughCarry);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
 class PopPush : public Instruction {
-  uint8_t reg; 
+  uint8_t reg;
   bool isPop;
   uint8_t currentByte;
   bool hasWastedCycle;
@@ -64,11 +81,30 @@ public:
   virtual int getType() override;
 };
 
+class Ret : public Instruction {
+  uint8_t currentByte;
+  uint16_t address;
+  Condition condition;
+  bool checkedCondition;
+  bool enableInterrupts;
+  bool wastedCycle;
+
+public:
+  Ret(Condition condition, bool enableInterrupts);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
 class Call : public Instruction {
   uint8_t needsBytes;
   uint16_t address;
   Condition condition;
-  uint8_t storedPCCount; 
+  uint8_t storedPCCount;
   bool movedSP;
 
 public:
@@ -107,6 +143,8 @@ class ExtendedInstruction : public Instruction {
   uint8_t instruction;
   uint16_t address;
   bool gotAddress;
+  uint8_t result;
+  bool shouldWrite;
 
 public:
   ExtendedInstruction();

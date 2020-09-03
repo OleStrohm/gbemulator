@@ -5,8 +5,6 @@
 #include <iostream>
 
 bool CPU::step() {
-  bool breakpoint = false;
-
   uint8_t opcode = read(registers.pc);
 
   if (!instr) {
@@ -32,13 +30,15 @@ bool CPU::step() {
       registers.pc--;
   }
 
-  if(registers.pc < 0x28)
+  if(registers.pc == 0x34)
 	  breakpoint = true;
 
-  return breakpoint;
+  return !breakpoint;
 }
 
 void CPU::dumpRom() { util::hexdump(rom, 0x1000); }
+
+void CPU::dumpVRam() { util::hexdump(vram); }
 
 void CPU::dumpRegisters() {
   printf("        == Registers ===\n");
@@ -91,6 +91,8 @@ int main(int argc, char **argv) {
           return 0;
         else if (in == "r") {
           cpu.dumpRegisters();
+		}  else if (in == "dvr") {
+			cpu.dumpVRam();
         } else
           moveOn = true;
       }
