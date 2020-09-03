@@ -32,7 +32,7 @@ bool CPU::step() {
       registers.pc--;
   }
 
-  if(registers.pc < 0xc)
+  if(registers.pc < 0x28)
 	  breakpoint = true;
 
   return breakpoint;

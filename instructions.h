@@ -8,7 +8,20 @@
 #include <string>
 
 namespace instruction {
-enum : int { NoInstruction = 0, Nop, Load, ALU, Jump, RST, CB, Unsupported };
+enum : int {
+  NoInstruction = 0,
+  Nop,
+  Inc,
+  Dec,
+  Load,
+  ALU,
+  PopPush,
+  Jump,
+  Call,
+  RST,
+  CB,
+  Unsupported
+};
 }
 
 enum class Condition { Unconditional, NotZero, Zero, NotCarry, Carry };
@@ -33,6 +46,62 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class PopPush : public Instruction {
+  uint8_t reg; 
+  bool isPop;
+  uint8_t currentByte;
+  bool hasWastedCycle;
+
+public:
+  PopPush(uint8_t reg, bool isPop);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
+class Call : public Instruction {
+  uint8_t needsBytes;
+  uint16_t address;
+  Condition condition;
+  uint8_t storedPCCount; 
+  bool movedSP;
+
+public:
+  Call(Condition condition);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual void amend(uint8_t val) override;
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
+class IncDec : public Instruction {
+  bool increment;
+  uint8_t destination;
+  bool isBigRegister;
+  uint16_t address;
+  bool gotAddress;
+  uint8_t storedValue;
+  bool retrievedStoredValue;
+
+public:
+  IncDec(bool increment, uint8_t destination, bool isBigRegister);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class ExtendedInstruction : public Instruction {
   uint8_t instruction;
@@ -95,12 +164,17 @@ class Load : public Instruction {
   uint16_t address;
   bool loadedAddress;
   uint8_t operation;
+  bool isMemoryLoad;
+  uint8_t direction;
+  bool isC;
+  bool actingOnSP;
 
 public:
   Load();
   Load(uint8_t operation);
   Load(uint8_t reg, bool is16Bit, int dummy);
   Load(uint8_t destination, uint8_t source);
+  Load(uint8_t direction, bool isC, bool is16Bit, bool actingOnSP);
 
   static std::unique_ptr<Instruction> decode(uint8_t opcode);
 

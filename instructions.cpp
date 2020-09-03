@@ -8,6 +8,184 @@
   if (!instr)                                                                  \
   instr = X::decode(opcode)
 
+PopPush::PopPush(uint8_t reg, bool isPop)
+    : reg(reg), isPop(isPop), currentByte(0), hasWastedCycle(isPop) {
+  finished = true;
+}
+
+std::unique_ptr<Instruction> PopPush::decode(uint8_t opcode) {
+  if (((opcode >> 6) & 0x3) == 0b11 && ((opcode >> 3) & 1) == 0b0 &&
+      (opcode & 0x3) == 0b01)
+    return std::make_unique<PopPush>((opcode >> 4) & 0x3,
+                                     ((opcode >> 2) & 1) == 0);
+
+  return nullptr;
+}
+
+bool PopPush::execute(CPU *cpu) {
+  uint16_t *registerMapping[]{&cpu->getRegisters().bc, &cpu->getRegisters().de,
+                              &cpu->getRegisters().hl, &cpu->getRegisters().sp};
+
+  std::string registerNames[2][4] = {{"C", "E", "L", "F"},
+                                     {"B", "D", "H", "A"}};
+
+  if (!hasWastedCycle) {
+    hasWastedCycle = true;
+    return false;
+  }
+
+  if (isPop) {
+    ((uint8_t *)registerMapping[reg])[currentByte] =
+        cpu->read(cpu->getRegisters().sp);
+    LOG("POP %s (%02X to %04X)\n", registerNames[currentByte][reg].c_str(), ((uint8_t *)registerMapping[reg])[currentByte], cpu->getRegisters().sp);
+    cpu->getRegisters().sp++;
+  } else {
+    cpu->getRegisters().sp--;
+    cpu->write(cpu->getRegisters().sp,
+               ((uint8_t *)registerMapping[reg])[1 - currentByte]);
+    LOG("PUSH %s (%02X to %04X)\n", registerNames[1 - currentByte][reg].c_str(), ((uint8_t *)registerMapping[reg])[1 - currentByte], cpu->getRegisters().sp);
+  }
+
+  currentByte++;
+  if (currentByte != 2)
+    return false;
+
+  return true;
+}
+
+std::string PopPush::getName() { return isPop ? "Pop" : "Push"; }
+int PopPush::getType() { return instruction::PopPush; }
+
+Call::Call(Condition condition)
+    : needsBytes(2), address(0), condition(condition), storedPCCount(0),
+      movedSP(false) {
+  finished = false;
+}
+
+std::unique_ptr<Instruction> Call::decode(uint8_t opcode) {
+  Condition conditions[] = {Condition::NotZero, Condition::Zero,
+                            Condition::NotCarry, Condition::Carry};
+
+  if (((opcode >> 5) & 0x7) == 0b110 && (opcode & 0x7) == 0b010)
+    return std::make_unique<Call>(conditions[(opcode >> 3) & 0x3]);
+  if (opcode == 0b11001101)
+    return std::make_unique<Call>(Condition::Unconditional);
+
+  return nullptr;
+}
+
+void Call::amend(uint8_t val) {
+  needsBytes--;
+  address = (address >> 8) | (val << 8);
+  finished = needsBytes == 0;
+}
+
+bool Call::execute(CPU *cpu) {
+  uint8_t flags = cpu->getRegisters().f;
+  if (condition == Condition::NotZero && (flags & (1 << 7)) == 0) // Not Zero
+    return true;
+  if (condition == Condition::Zero && (flags & (1 << 7)) == 1) // Zero
+    return true;
+  if (condition == Condition::NotCarry && (flags & (1 << 4)) == 0) // Not Carry
+    return true;
+  if (condition == Condition::Carry && (flags & (1 << 4)) == 1) // Carry
+    return true;
+
+  if (storedPCCount != 2) {
+    cpu->write(cpu->getRegisters().sp - storedPCCount,
+               (cpu->getRegisters().pc >> (8 * (1 - storedPCCount))) & 0xFF);
+    LOG("WROTE %02X to %04X\n",
+        (cpu->getRegisters().pc >> (8 * (1 - storedPCCount))) & 0xFF,
+        cpu->getRegisters().sp - storedPCCount);
+    storedPCCount++;
+    if (storedPCCount != 2)
+      return false;
+  }
+
+  if (!movedSP) {
+    cpu->getRegisters().sp -= 2;
+    movedSP = true;
+    return false;
+  }
+
+  cpu->getRegisters().pc = address;
+  LOG("Call jump to %04X", address);
+
+  return true;
+}
+
+std::string Call::getName() { return "Call"; }
+int Call::getType() { return instruction::Call; }
+
+IncDec::IncDec(bool increment, uint8_t destination, bool isBigRegister)
+    : increment(increment), destination(destination),
+      isBigRegister(isBigRegister) {
+  finished = true;
+  address = 0;
+  gotAddress = false;
+  storedValue = 0;
+  retrievedStoredValue = false;
+}
+
+std::unique_ptr<Instruction> IncDec::decode(uint8_t opcode) {
+  if ((opcode >> 6) == 0b00 && (opcode & 0x7) == 0b011)
+    return std::make_unique<IncDec>(((opcode >> 3) & 1) == 0,
+                                    (opcode >> 4) & 0x3, true);
+  if ((opcode >> 6) == 0b00 && ((opcode >> 1) & 0x3) == 0b10)
+    return std::make_unique<IncDec>((opcode & 1) == 0, (opcode >> 3) & 0x7,
+                                    false);
+
+  return nullptr;
+}
+
+bool IncDec::execute(CPU *cpu) {
+  if (isBigRegister) {
+    uint16_t *registerMapping[]{
+        &cpu->getRegisters().bc, &cpu->getRegisters().de,
+        &cpu->getRegisters().hl, &cpu->getRegisters().sp};
+
+    uint16_t *dest = registerMapping[destination];
+
+    *dest = *dest + 1;
+  } else {
+    uint8_t *registerMapping[] = {&cpu->getRegisters().b,
+                                  &cpu->getRegisters().c,
+                                  &cpu->getRegisters().d,
+                                  &cpu->getRegisters().e,
+                                  &cpu->getRegisters().h,
+                                  &cpu->getRegisters().l,
+                                  nullptr,
+                                  &cpu->getRegisters().a};
+
+    uint8_t *dest = registerMapping[destination];
+
+    if (dest == nullptr) {
+      if (!gotAddress) {
+        address = cpu->getRegisters().hl;
+        gotAddress = true;
+        return false;
+      }
+
+      if (!retrievedStoredValue) {
+        storedValue = cpu->read(address);
+        retrievedStoredValue = true;
+        return false;
+      }
+
+      cpu->write(address, storedValue + 1);
+    } else {
+      *dest = *dest + 1;
+    }
+  }
+
+  return true;
+}
+
+std::string IncDec::getName() { return increment ? "Inc" : "Dec"; }
+int IncDec::getType() {
+  return increment ? instruction::Inc : instruction::Dec;
+}
+
 ExtendedInstruction::ExtendedInstruction()
     : instruction(0), address(0), gotAddress(0) {
   finished = false;
@@ -242,6 +420,7 @@ Load::Load()
     : operation(0xFF), is16Bit(true), needsBytes(2), destination(0xFF),
       source(0xFF), address(0), loadedAddress(false) {
   finished = false;
+  isMemoryLoad = false;
   immediate = 0;
 }
 
@@ -249,6 +428,7 @@ Load::Load(uint8_t operation)
     : operation(operation), needsBytes(0), source(0xFF), address(0),
       loadedAddress(false) {
   finished = true;
+  isMemoryLoad = false;
   immediate = 0;
 }
 
@@ -256,6 +436,7 @@ Load::Load(uint8_t destination, bool is16Bit, int dummy)
     : operation(0xFF), needsBytes(is16Bit ? 2 : 1), is16Bit(is16Bit),
       destination(destination), source(0xFF), address(0), loadedAddress(false) {
   finished = false;
+  isMemoryLoad = false;
   immediate = 0;
 }
 
@@ -263,7 +444,18 @@ Load::Load(uint8_t destination, uint8_t source)
     : operation(0xFF), needsBytes(0), destination(destination), source(source),
       address(0), loadedAddress(false) {
   finished = true;
+  isMemoryLoad = false;
   immediate = 0;
+}
+
+Load::Load(uint8_t direction, bool isC, bool is16Bit, bool actingOnSP)
+    : operation(0xFF), destination(0xFF), source(0xFF), direction(direction),
+      needsBytes(isC ? 0 : (is16Bit ? 2 : 1)), is16Bit(is16Bit), isC(isC),
+      actingOnSP(actingOnSP), loadedAddress(false) {
+  finished = needsBytes == 0;
+  isMemoryLoad = true;
+  immediate = 0;
+  address = 0;
 }
 
 std::unique_ptr<Instruction> Load::decode(uint8_t opcode) {
@@ -277,6 +469,22 @@ std::unique_ptr<Instruction> Load::decode(uint8_t opcode) {
     return std::make_unique<Load>((opcode >> 3) & 0x7, opcode & 0x7);
   if ((opcode >> 6) == 0b00 && (opcode & 0x7) == 0b010)
     return std::make_unique<Load>((opcode >> 3) & 0x7);
+  if (opcode == 0b11111000)
+    return std::make_unique<Load>(0, false, false, true);
+  if (opcode == 0b11100000)
+    return std::make_unique<Load>(0, false, false, false);
+  if (opcode == 0b11110000)
+    return std::make_unique<Load>(1, false, false, false);
+  if (opcode == 0b11100010)
+    return std::make_unique<Load>(0, true, false, false);
+  if (opcode == 0b11100000)
+    return std::make_unique<Load>(1, true, false, false);
+  if (opcode == 0b11110010)
+    return std::make_unique<Load>(0, false, true, false);
+  if (opcode == 0b11111010)
+    return std::make_unique<Load>(1, false, true, false);
+  if (opcode == 0b11111001)
+    return std::make_unique<Load>(1, false, false, true);
 
   return nullptr;
 }
@@ -291,7 +499,52 @@ void Load::amend(uint8_t val) {
 }
 
 bool Load::execute(CPU *cpu) {
-  if (destination == 0xFF) {
+  if (isMemoryLoad) {
+    if (isC) {
+      if (!loadedAddress) {
+        address = 0xFF00 + cpu->getRegisters().c;
+        loadedAddress = true;
+        return false;
+      }
+
+      if ((direction & 1) == 0) {
+        cpu->write(address, cpu->getRegisters().a);
+        LOG("WROTE %02X to %04X (0xFF00 + C)\n", cpu->getRegisters().a,
+            address);
+      } else {
+        cpu->getRegisters().a = cpu->read(address);
+        LOG("READ %02X from %04X (0xFF00 + C)\n", cpu->getRegisters().a,
+            address);
+      }
+    } else if (actingOnSP) {
+      if ((direction & 1) == 0) {
+        cpu->getRegisters().hl = cpu->getRegisters().sp + (int8_t)immediate;
+        LOG("Moved %02X to HL (SP + %i)", cpu->getRegisters().hl,
+            (int8_t)immediate);
+      } else {
+        cpu->getRegisters().a = cpu->read(address);
+        LOG("Moved %02X to SP from HL", cpu->getRegisters().sp);
+      }
+    } else {
+      if (!loadedAddress) {
+        if (is16Bit)
+          address = immediate;
+        else
+          address = 0xFF00 + immediate;
+
+        loadedAddress = true;
+        return false;
+      }
+
+      if ((direction & 1) == 0) {
+        cpu->write(address, cpu->getRegisters().a);
+        LOG("WROTE %02X to %04X\n", cpu->getRegisters().a, address);
+      } else {
+        cpu->getRegisters().a = cpu->read(address);
+        LOG("READ %02X from %04X\n", cpu->getRegisters().a, address);
+      }
+    }
+  } else if (destination == 0xFF) {
     if (!loadedAddress) {
       address = immediate;
       loadedAddress = true;
@@ -507,9 +760,12 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
   std::unique_ptr<Instruction> instr;
 
   DECODE(Nop);
+  DECODE(IncDec);
   DECODE(Load);
   DECODE(ALU);
+  DECODE(PopPush);
   DECODE(Jump);
+  DECODE(Call);
   DECODE(RST);
   DECODE(ExtendedInstruction);
   DECODE(Unsupported);
