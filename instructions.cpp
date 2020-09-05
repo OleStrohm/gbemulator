@@ -8,6 +8,29 @@
   if (!instr)                                                                  \
   instr = X::decode(opcode)
 
+EnableDisableInterrupts::EnableDisableInterrupts(bool enable) : enable(enable) {
+  finished = true;
+}
+
+std::unique_ptr<Instruction> EnableDisableInterrupts::decode(uint8_t opcode) {
+  if (opcode == 0b11110011)
+    return std::make_unique<EnableDisableInterrupts>(false);
+  if (opcode == 0b11111011)
+    return std::make_unique<EnableDisableInterrupts>(true);
+
+  return nullptr;
+}
+
+bool EnableDisableInterrupts::execute(CPU *cpu) {
+  cpu->setInterruptEnable(enable);
+  return true;
+}
+
+std::string EnableDisableInterrupts::getName() { return enable ? "EI" : "DI"; }
+int EnableDisableInterrupts::getType() {
+  return instruction::EnableDisableInterrupts;
+}
+
 Ret::Ret(Condition condition, bool enableInterrupts)
     : condition(condition), enableInterrupts(enableInterrupts), currentByte(0) {
   finished = true;
@@ -1083,6 +1106,7 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
   DECODE(Ret);
   DECODE(Jump);
   DECODE(Call);
+  DECODE(EnableDisableInterrupts);
   DECODE(ExtendedInstruction);
   DECODE(Unsupported);
 

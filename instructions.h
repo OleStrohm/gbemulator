@@ -21,6 +21,7 @@ enum : int {
   Jump,
   Call,
   RST,
+  EnableDisableInterrupts,
   CB,
   Unsupported
 };
@@ -48,6 +49,20 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class EnableDisableInterrupts : public Instruction {
+  bool enable;
+
+public:
+  EnableDisableInterrupts(bool enable);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class RotateA : public Instruction {
   bool isLeft;

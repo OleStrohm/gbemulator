@@ -10,22 +10,28 @@ class Instruction;
 
 class CPU {
   std::vector<uint8_t> rom;
-  std::vector<uint8_t> ram0;
+  std::vector<uint8_t> switchableRam;
+  std::vector<uint8_t> ram;
   std::vector<uint8_t> vram;
   std::vector<uint8_t> zeropage;
 
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
 
+  bool interruptsEnabled = false;
   bool halted = false;
   bool breakpoint = false;
 
 public:
-  CPU() : rom(0x8000), ram0(0x1000), vram(0x2000), zeropage(0xFFFE - 0xFF80) {
+  CPU() : rom(0x8000), switchableRam(0x2000), ram(0x2000), vram(0x2000), zeropage(0xFFFE - 0xFF80) {
     registers.pc = 0;
   }
 
   bool step();
+
+  void setInterruptEnable(bool enableInterrupts) {
+    interruptsEnabled = enableInterrupts;
+  }
 
   bool hasHalted() { return halted; }
   RegisterBank &getRegisters() { return registers; }

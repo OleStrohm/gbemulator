@@ -1,10 +1,15 @@
 SOURCE = gb.cpp instructions.cpp utils.cpp
 
 gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
-	g++ -std=c++17 -o ./build/gameboy $(SOURCE)
+	mkdir -p build/debug
+	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE)
+
+release: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
+	mkdir -p build/release
+	g++ -O3 -std=c++17 -o ./build/release/gameboy $(SOURCE)
 
 test: gb
-	./build/gameboy ../gb-test-roms/cpu_instrs/individual/01-special.gb
+	./build/debug/gameboy "../gb-test-roms/cpu_instrs/individual/04-op r,imm.gb"
 
 clean:
 	rm -r build

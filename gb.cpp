@@ -10,9 +10,9 @@ bool CPU::step() {
   if (!instr) {
     instr = instruction::decode(opcode);
     if (instr->getType() != instruction::Nop) {
-      printf("0x%04X: %02X | ", registers.pc, opcode);
-      util::printfBits("", opcode, 8);
-      printf("\tInstruction: %s\n", instr->getName().c_str());
+      //printf("0x%04X: %02X | ", registers.pc, opcode);
+      //util::printfBits("", opcode, 8);
+      //printf("\tInstruction: %s\n", instr->getName().c_str());
     }
 
     if (instr->getType() == instruction::Unsupported)
@@ -30,8 +30,8 @@ bool CPU::step() {
       registers.pc--;
   }
 
-  if (registers.pc == 0x55)
-    breakpoint = true;
+  //  if (registers.pc == 0x100)
+  //    breakpoint = true;
 
   return !breakpoint;
 }
@@ -41,11 +41,14 @@ uint8_t CPU::read(uint16_t addr) {
     return rom[addr];
   if (addr >= 0x8000 && addr < 0xA000)
     return vram[addr - 0x8000];
-  if (addr >= 0xC000 && addr < 0xD000)
-    return ram0[addr - 0xC000];
+  if (addr >= 0xA000 && addr < 0xC000)
+    return switchableRam[addr - 0xA000];
+  if (addr >= 0xC000 && addr < 0xE000)
+    return ram[addr - 0xC000];
   if (addr >= 0xFF80 && addr <= 0xFFFE)
     return zeropage[addr - 0xFF80];
 
+  breakpoint = true;
   printf("ERROR: READ MEMORY OUT OF BOUNDS : %04X\n", addr);
   return 0xFF;
 }
@@ -55,20 +58,29 @@ void CPU::write(uint16_t addr, uint8_t value) {
     rom[addr] = value;
   else if (addr >= 0x8000 && addr < 0xA000)
     vram[addr - 0x8000] = value;
-  else if (addr >= 0xC000 && addr < 0xD000)
-    ram0[addr - 0xC000] = value;
+  else if (addr >= 0xA000 && addr < 0xC000)
+    switchableRam[addr - 0xA000] = value;
+  else if (addr >= 0xC000 && addr < 0xE000)
+    ram[addr - 0xC000] = value;
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr == 0xFF26) {
       if (value >> 7)
         printf("Enabled Audio\n");
       else
         printf("Disabled Audio\n");
+    } else if (addr == 0xFF26) {
+      printf("DEBUG CHAR: %c", value);
+      breakpoint = true;
     } else
-		printf("Wrote to IO at %04X\n", addr);
-  } else if (addr >= 0xFF80 && addr <= 0xFFFE)
+      printf("%02X: Wrote %02X to IO at %04X\n", registers.pc, value, addr);
+  } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
     zeropage[addr - 0xFF80] = value;
-  else
+  } else if (addr == 0xFFFF) {
+    printf("Set Interrupt Register to 0x%02X\n", value);
+  } else {
+    breakpoint = true;
     printf("ERROR: WRITE MEMORY OUT OF BOUNDS\n");
+  }
 }
 void CPU::dumpRom() { util::hexdump(rom, 0x1000); }
 
@@ -111,7 +123,7 @@ int main(int argc, char **argv) {
   auto file = util::readFile(argv[1]);
 
   cpu.loadRom(file);
-  cpu.loadBoot(util::readFile("boot.bin"));
+  //  cpu.loadBoot(util::readFile("boot.bin"));
   cpu.dumpRom();
 
   while (!cpu.hasHalted()) {
