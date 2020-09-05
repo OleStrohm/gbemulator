@@ -23,9 +23,7 @@ class CPU {
   bool breakpoint = false;
 
 public:
-  CPU() : rom(0x8000), switchableRam(0x2000), ram(0x2000), vram(0x2000), zeropage(0xFFFE - 0xFF80) {
-    registers.pc = 0;
-  }
+  CPU();
 
   bool step();
 

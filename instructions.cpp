@@ -60,14 +60,14 @@ bool Ret::execute(CPU *cpu) {
 
     if (!checkedCondition) {
       if (condition == Condition::NotZero &&
-          (flags & (1 << 7)) == 0) // Not Zero
+          (flags & (1 << 7)) != 0) // Not Zero
         return true;
-      if (condition == Condition::Zero && (flags & (1 << 7)) == 1) // Zero
+      if (condition == Condition::Zero && (flags & (1 << 7)) == 0) // Zero
         return true;
       if (condition == Condition::NotCarry &&
-          (flags & (1 << 4)) == 0) // Not Carry
+          (flags & (1 << 4)) != 0) // Not Carry
         return true;
-      if (condition == Condition::Carry && (flags & (1 << 4)) == 1) // Carry
+      if (condition == Condition::Carry && (flags & (1 << 4)) == 0) // Carry
         return true;
 
       checkedCondition = true;
@@ -76,7 +76,7 @@ bool Ret::execute(CPU *cpu) {
   }
 
   if (currentByte != 2) {
-    address = (address >> 8) | (cpu->read(cpu->getRegisters().sp));
+    address = (address >> 8) | (cpu->read(cpu->getRegisters().sp) << 8);
     cpu->getRegisters().sp += 1;
     currentByte++;
 
@@ -117,28 +117,32 @@ bool RotateA::execute(CPU *cpu) {
     if (isLeft) {
       LOG("Rotate A left\n");
       bool carrySet = (flags & (1 << 4)) == (1 << 4);
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       if (result & 0x80)
         flags |= 1 << 4;
 
       result = result << 1;
       if (carrySet)
         result |= 1;
+      if (result == 0)
+        flags |= 1 << 7;
     } else {
       LOG("Rotate A right\n");
       bool carrySet = (flags & (1 << 4)) == (1 << 4);
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       if (result & 0x1)
         flags |= 1 << 4;
 
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
+      if (result == 0)
+        flags |= 1 << 7;
     }
   } else {
     if (isLeft) {
       LOG("Rotate A left (without carry)\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x80) == 0x80;
       if (carrySet)
         flags |= 1 << 4;
@@ -146,9 +150,11 @@ bool RotateA::execute(CPU *cpu) {
       result = result << 1;
       if (carrySet)
         result |= 1;
+      if (result == 0)
+        flags |= 1 << 7;
     } else {
       LOG("Rotate A right (without carry)\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x1) == 0x1;
       if (carrySet)
         flags |= 1 << 4;
@@ -156,6 +162,8 @@ bool RotateA::execute(CPU *cpu) {
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
+      if (result == 0)
+        flags |= 1 << 7;
     }
   }
 
@@ -181,7 +189,7 @@ std::unique_ptr<Instruction> PopPush::decode(uint8_t opcode) {
 
 bool PopPush::execute(CPU *cpu) {
   uint16_t *registerMapping[]{&cpu->getRegisters().bc, &cpu->getRegisters().de,
-                              &cpu->getRegisters().hl, &cpu->getRegisters().sp};
+                              &cpu->getRegisters().hl, &cpu->getRegisters().af};
 
   std::string registerNames[2][4] = {{"C", "E", "L", "F"},
                                      {"B", "D", "H", "A"}};
@@ -226,7 +234,7 @@ std::unique_ptr<Instruction> Call::decode(uint8_t opcode) {
   Condition conditions[] = {Condition::NotZero, Condition::Zero,
                             Condition::NotCarry, Condition::Carry};
 
-  if (((opcode >> 5) & 0x7) == 0b110 && (opcode & 0x7) == 0b010)
+  if (((opcode >> 5) & 0x7) == 0b110 && (opcode & 0x7) == 0b100)
     return std::make_unique<Call>(conditions[(opcode >> 3) & 0x3]);
   if (opcode == 0b11001101)
     return std::make_unique<Call>(Condition::Unconditional);
@@ -242,21 +250,21 @@ void Call::amend(uint8_t val) {
 
 bool Call::execute(CPU *cpu) {
   uint8_t flags = cpu->getRegisters().f;
-  if (condition == Condition::NotZero && (flags & (1 << 7)) == 0) // Not Zero
+  if (condition == Condition::NotZero && (flags & (1 << 7)) != 0) // Not Zero
     return true;
-  if (condition == Condition::Zero && (flags & (1 << 7)) == 1) // Zero
+  if (condition == Condition::Zero && (flags & (1 << 7)) == 0) // Zero
     return true;
-  if (condition == Condition::NotCarry && (flags & (1 << 4)) == 0) // Not Carry
+  if (condition == Condition::NotCarry && (flags & (1 << 4)) != 0) // Not Carry
     return true;
-  if (condition == Condition::Carry && (flags & (1 << 4)) == 1) // Carry
+  if (condition == Condition::Carry && (flags & (1 << 4)) == 0) // Carry
     return true;
 
   if (storedPCCount != 2) {
-    cpu->write(cpu->getRegisters().sp - storedPCCount,
+    cpu->write(cpu->getRegisters().sp - storedPCCount - 1,
                (cpu->getRegisters().pc >> (8 * (1 - storedPCCount))) & 0xFF);
     LOG("WROTE %02X to %04X\n",
         (cpu->getRegisters().pc >> (8 * (1 - storedPCCount))) & 0xFF,
-        cpu->getRegisters().sp - storedPCCount);
+        cpu->getRegisters().sp - storedPCCount - 1);
     storedPCCount++;
     if (storedPCCount != 2)
       return false;
@@ -312,10 +320,6 @@ bool IncDec::execute(CPU *cpu) {
       *dest = *dest + 1;
     else
       *dest = *dest - 1;
-
-    flags &= 0b00010000;
-    if (*dest == 0)
-      flags |= 0b10000000;
   } else {
     uint8_t *registerMapping[] = {&cpu->getRegisters().b,
                                   &cpu->getRegisters().c,
@@ -341,25 +345,37 @@ bool IncDec::execute(CPU *cpu) {
         return false;
       }
 
+      flags &= 0b00010000;
+      if (increment && ((storedValue)&0xF) == 0xF)
+        flags |= 1 << 5;
+      if (!increment && ((storedValue)&0xF) == 0x0)
+        flags |= 1 << 5;
+
       if (increment)
         cpu->write(address, storedValue + 1);
       else
         cpu->write(address, storedValue - 1);
 
-      flags &= 0b00010000;
-      if (increment) {
-        if (((*dest) + 1) == 0)
-          flags |= 0b10000000;
-        else if (((*dest) - 1) == 0)
-          flags |= 0b10000000;
-      }
+      if (!increment)
+        flags |= 0b01000000;
+      if (increment && (storedValue + 1) == 0)
+        flags |= 0b10000000;
+      if (!increment && (storedValue - 1) == 0)
+        flags |= 0b10000000;
     } else {
+      flags &= 0b00010000;
+      if (increment && ((*dest) & 0xF) == 0xF)
+        flags |= 1 << 5;
+      if (!increment && ((*dest) & 0xF) == 0x0)
+        flags |= 1 << 5;
+
       if (increment)
         *dest = *dest + 1;
       else
         *dest = *dest - 1;
 
-      flags &= 0b00010000;
+      if (!increment)
+        flags |= 0b01000000;
       if (*dest == 0)
         flags |= 0b10000000;
     }
@@ -389,7 +405,7 @@ void ExtendedInstruction::amend(uint8_t val) {
   instruction = val;
   finished = true;
   LOG("\tCB Instruction: %02X | ", val);
-  util::printfBits("", val, 8);
+  // util::printfBits("", val, 8);
 }
 
 bool ExtendedInstruction::execute(CPU *cpu) {
@@ -420,7 +436,7 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     bool isLeft = ((instruction >> 3) & 1) == 0;
     if (isLeft) {
       LOG("Rotate left (without carry\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x80) == 0x80;
       if (carrySet)
         flags |= 1 << 4;
@@ -428,6 +444,8 @@ bool ExtendedInstruction::execute(CPU *cpu) {
       result = result << 1;
       if (carrySet)
         result |= 1;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -437,7 +455,7 @@ bool ExtendedInstruction::execute(CPU *cpu) {
       }
     } else {
       LOG("Rotate right (without carry\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x1) == 0x1;
       if (carrySet)
         flags |= 1 << 4;
@@ -445,6 +463,8 @@ bool ExtendedInstruction::execute(CPU *cpu) {
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -458,13 +478,15 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     if (isLeft) {
       LOG("Rotate left\n");
       bool carrySet = (flags & (1 << 4)) == (1 << 4);
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       if (result & 0x80)
         flags |= 1 << 4;
 
       result = result << 1;
       if (carrySet)
         result |= 1;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -475,13 +497,15 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     } else {
       LOG("Rotate right\n");
       bool carrySet = (flags & (1 << 4)) == (1 << 4);
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       if (result & 0x1)
         flags |= 1 << 4;
 
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -494,12 +518,14 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     bool isLeft = ((instruction >> 3) & 1) == 0;
     if (isLeft) {
       LOG("Shift left\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x80) == 0x80;
       if (carrySet)
         flags |= 1 << 4;
 
       result = result << 1;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -509,7 +535,7 @@ bool ExtendedInstruction::execute(CPU *cpu) {
       }
     } else {
       LOG("Arithmetic shift right\n");
-      flags &= 0b11101111;
+      flags &= 0b00001111;
       bool carrySet = (result & 0x1) == 0x1;
       if (carrySet)
         flags |= 1 << 4;
@@ -517,6 +543,8 @@ bool ExtendedInstruction::execute(CPU *cpu) {
       result = result >> 1;
       if (result & 0b01000000)
         result |= 0x80;
+      if (result == 0)
+        flags |= 1 << 7;
 
       if (registerMapping[instruction & 0x7] != nullptr) {
         *registerMapping[instruction & 0x7] = result;
@@ -537,12 +565,14 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     }
   } else if (instruction >> 3 == 0b00111) { // SRL D
     LOG("Logical shift right\n");
-    flags &= 0b11101111;
+    flags &= 0b00001111;
     bool carrySet = (result & 0x1) == 0x1;
     if (carrySet)
       flags |= 1 << 4;
 
     result = result >> 1;
+    if (result == 0)
+      flags |= 1 << 7;
 
     if (registerMapping[instruction & 0x7] != nullptr) {
       *registerMapping[instruction & 0x7] = result;
@@ -659,75 +689,104 @@ bool ALU::execute(CPU *cpu) {
 
   uint8_t *dest = &cpu->getRegisters().a;
 
-  if (source == 0b110 && !address) {
+  if (!takesImmediate && source == 0b110 && !address) {
     address = cpu->getRegisters().hl;
     return false;
   }
 
   uint8_t &flags = cpu->getRegisters().f;
-  uint8_t src = address ? cpu->read(address) : *(registerMapping[source]);
+  uint8_t src = address
+                    ? cpu->read(address)
+                    : (takesImmediate ? immediate : *(registerMapping[source]));
   uint8_t carry = (flags >> 4) & 1;
 
   flags = 0;
-  // TODO: implement N flag and make sure it's right
+  // TODO: implement H flag and make sure it's right
   switch (operation) {
   case 0b000 /*ADD*/: {
     if (((uint32_t)*dest) + ((uint32_t)src) > 0xFF)
       flags |= 1 << 4;
+    if (((*dest) & 0xF) + (src & 0xF) > 0xF)
+      flags |= 1 << 5;
 
     *dest += src;
 
     if (*dest == 0)
       flags |= 1 << 7;
+    break;
   }
-  case 0b001 /*ADC*/:
+  case 0b001 /*ADC*/: {
     if (((uint32_t)*dest) + ((uint32_t)src) + (uint32_t)carry > 0xFF)
       flags |= 1 << 4;
+    if (((*dest) & 0xF) + (src & 0xF) + carry > 0xF)
+      flags |= 1 << 5;
 
     *dest += src + carry;
 
     if (*dest == 0)
       flags |= 1 << 7;
-  case 0b010 /*SUB*/:
+    break;
+  }
+  case 0b010 /*SUB*/: {
     if (*dest < src)
       flags |= 1 << 4;
+    if (((*dest) & 0xF) < (src & 0xF))
+      flags |= 1 << 5;
 
     *dest -= src;
 
     if (*dest == 0)
       flags |= 1 << 7;
     flags |= 0b01000000;
-  case 0b011 /*SBC*/:
+    break;
+  }
+  case 0b011 /*SBC*/: {
     if (((int32_t)*dest) - ((int32_t)src) + (int32_t)carry - 1 < 0)
       flags |= 1 << 4;
+    if (((*dest) & 0xF) + 1 < (src & 0xF))
+      flags |= 1 << 5;
 
     *dest += -(src) + carry - 1;
 
     if (*dest == 0)
       flags |= 1 << 7;
     flags |= 0b01000000;
-  case 0b100 /*AND*/:
+    break;
+  }
+  case 0b100 /*AND*/: {
     *dest &= src;
 
     if (*dest == 0)
       flags |= 1 << 7;
     flags |= 1 << 5;
-  case 0b101 /*XOR*/:
+    break;
+  }
+  case 0b101 /*XOR*/: {
     *dest ^= src;
 
     if (*dest == 0)
       flags |= 1 << 7;
-  case 0b110 /*OR */:
+    break;
+  }
+  case 0b110 /*OR */: {
     *dest |= src;
 
     if (*dest == 0)
       flags |= 1 << 7;
-  case 0b111 /*CP */:
+    break;
+  }
+  case 0b111 /*CP */: {
     flags |= 0b01000000;
     if (*dest < src)
       flags |= 1 << 4;
+    if (((*dest) & 0xF) < (src & 0xF))
+      flags |= 1 << 5;
     if (*dest == src)
       flags |= 1 << 7;
+    break;
+  }
+  default:
+    break;
   }
 
   return true;
