@@ -11,6 +11,7 @@ namespace instruction {
 enum : int {
   NoInstruction = 0,
   Nop,
+  SpecialAdd,
   Inc,
   Dec,
   RotateA,
@@ -49,6 +50,23 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class SpecialAdd : public Instruction {
+  uint8_t reg;
+  uint8_t immediate;
+  uint8_t wastedCycles;
+
+public:
+  SpecialAdd(uint8_t reg);
+
+  virtual void amend(uint8_t val) override;
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class EnableDisableInterrupts : public Instruction {
   bool enable;
@@ -244,8 +262,10 @@ class Jump : public Instruction {
   bool isDisplacement;
   Condition condition;
   bool checkedCondition;
+  bool jumpsToHL;
 
 public:
+  Jump();
   Jump(bool isDisplacement, Condition condition);
 
   static std::unique_ptr<Instruction> decode(uint8_t opcode);

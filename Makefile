@@ -1,8 +1,8 @@
 SOURCE = gb.cpp instructions.cpp utils.cpp
 
-gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
+debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
-	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE)
+	g++ -g -std=c++17 -o ./build/debug/gameboy $(SOURCE)
 
 release: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/release

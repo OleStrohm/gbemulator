@@ -2,11 +2,73 @@
 
 #include "log.h"
 #include "utils.h"
+#include <bits/stdint-uintn.h>
 #include <memory>
 
 #define DECODE(X)                                                              \
   if (!instr)                                                                  \
   instr = X::decode(opcode)
+
+SpecialAdd::SpecialAdd(uint8_t reg) : reg(reg), immediate(0), wastedCycles(0) {
+  finished = reg != 0xFF;
+}
+
+void SpecialAdd::amend(uint8_t val) {
+  immediate = val;
+  finished = true;
+}
+
+std::unique_ptr<Instruction> SpecialAdd::decode(uint8_t opcode) {
+  if (((opcode >> 6) & 0x3) == 0b00 && (opcode & 0xF) == 0b1001)
+    return std::make_unique<SpecialAdd>((opcode >> 4) & 0x3);
+  if (opcode == 0b11101000)
+    return std::make_unique<SpecialAdd>(0xFF);
+
+  return nullptr;
+}
+
+bool SpecialAdd::execute(CPU *cpu) {
+  uint8_t &flags = cpu->getRegisters().f;
+  if (reg != 0xFF) {
+    if (wastedCycles != 1) {
+      wastedCycles++;
+      return false;
+    }
+
+    uint16_t *registerMapping[]{
+        &cpu->getRegisters().bc, &cpu->getRegisters().de,
+        &cpu->getRegisters().hl, &cpu->getRegisters().sp};
+
+    flags &= 0b10001111;
+    if (((uint32_t)cpu->getRegisters().hl) +
+            ((uint32_t)(*(registerMapping[reg]))) >
+        0xFFFF)
+      flags |= 1 << 4;
+    if ((cpu->getRegisters().hl & 0x0FFF) + (*(registerMapping[reg]) & 0x0FFF) >
+        0x0FFF)
+      flags |= 1 << 5;
+
+    cpu->getRegisters().hl += *(registerMapping[reg]);
+  } else {
+    if (wastedCycles != 2) {
+      wastedCycles++;
+      return false;
+    }
+
+    flags &= 0b10001111;
+    if (((uint32_t)cpu->getRegisters().sp) + ((uint32_t)(immediate)) > 0xFFFF)
+      flags |= 1 << 4;
+    if ((cpu->getRegisters().sp & 0x0FFF) + (immediate & 0x0FFF) > 0x0FFF)
+      flags |= 1 << 5;
+
+    cpu->getRegisters().sp += immediate;
+  }
+
+  return true;
+}
+
+std::string SpecialAdd::getName() { return "Special Add"; }
+int SpecialAdd::getType() { return instruction::SpecialAdd; }
 
 EnableDisableInterrupts::EnableDisableInterrupts(bool enable) : enable(enable) {
   finished = true;
@@ -124,8 +186,6 @@ bool RotateA::execute(CPU *cpu) {
       result = result << 1;
       if (carrySet)
         result |= 1;
-      if (result == 0)
-        flags |= 1 << 7;
     } else {
       LOG("Rotate A right\n");
       bool carrySet = (flags & (1 << 4)) == (1 << 4);
@@ -136,8 +196,6 @@ bool RotateA::execute(CPU *cpu) {
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
-      if (result == 0)
-        flags |= 1 << 7;
     }
   } else {
     if (isLeft) {
@@ -150,8 +208,6 @@ bool RotateA::execute(CPU *cpu) {
       result = result << 1;
       if (carrySet)
         result |= 1;
-      if (result == 0)
-        flags |= 1 << 7;
     } else {
       LOG("Rotate A right (without carry)\n");
       flags &= 0b00001111;
@@ -162,8 +218,6 @@ bool RotateA::execute(CPU *cpu) {
       result = result >> 1;
       if (carrySet)
         result |= 0x80;
-      if (result == 0)
-        flags |= 1 << 7;
     }
   }
 
@@ -741,12 +795,12 @@ bool ALU::execute(CPU *cpu) {
     break;
   }
   case 0b011 /*SBC*/: {
-    if (((int32_t)*dest) - ((int32_t)src) + (int32_t)carry - 1 < 0)
+    if (((int32_t)*dest) < ((int32_t)src) + (int32_t)carry)
       flags |= 1 << 4;
-    if (((*dest) & 0xF) + 1 < (src & 0xF))
+    if (((*dest) & 0xF) < (src & 0xF) + carry)
       flags |= 1 << 5;
 
-    *dest += -(src) + carry - 1;
+    *dest += -src - carry;
 
     if (*dest == 0)
       flags |= 1 << 7;
@@ -1018,7 +1072,7 @@ bool Load::execute(CPU *cpu) {
         cpu->write(address, immediate);
         LOG("Wrote %02X to %04X\n", immediate, address);
       } else if (dest == nullptr) {
-        address = *dest;
+        address = cpu->getRegisters().hl; // TODO: DOUBLE CHECK
         loadedAddress = true;
         LOG("Got address\n");
         return false;
@@ -1071,9 +1125,15 @@ bool Load::execute(CPU *cpu) {
 std::string Load::getName() { return "Load"; }
 int Load::getType() { return instruction::Load; }
 
+Jump::Jump()
+    : needsBytes(0), isDisplacement(false), condition(Condition::Unconditional),
+      checkedCondition(false), jumpsToHL(true) {
+  finished = true;
+}
+
 Jump::Jump(bool isDisplacement, Condition condition)
     : needsBytes(isDisplacement ? 1 : 2), isDisplacement(isDisplacement),
-      condition(condition), checkedCondition(false) {
+      condition(condition), checkedCondition(false), jumpsToHL(false) {
   finished = false;
   addr = 0;
 }
@@ -1090,6 +1150,8 @@ std::unique_ptr<Instruction> Jump::decode(uint8_t opcode) {
     return std::make_unique<Jump>(false, Condition::Unconditional);
   if ((opcode >> 5) == 0b110 && (opcode & 0x7) == 0b010)
     return std::make_unique<Jump>(false, conditions[(opcode >> 3) & 0x3]);
+  if (opcode == 0b11101001)
+    return std::make_unique<Jump>();
 
   return nullptr;
 }
@@ -1105,7 +1167,9 @@ void Jump::amend(uint8_t val) {
 
 bool Jump::execute(CPU *cpu) {
   uint8_t flags = cpu->getRegisters().f;
-  if (checkedCondition || condition == Condition::Unconditional) {
+  if (jumpsToHL) {
+	  cpu->getRegisters().pc = cpu->getRegisters().hl;
+  } else if (checkedCondition || condition == Condition::Unconditional) {
     if (isDisplacement) {
       cpu->getRegisters().pc += (int8_t)addr;
       LOG("Jumped to %04X\n", cpu->getRegisters().pc);
@@ -1156,6 +1220,7 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
   std::unique_ptr<Instruction> instr;
 
   DECODE(Nop);
+  DECODE(SpecialAdd);
   DECODE(IncDec);
   DECODE(RotateA);
   DECODE(Load);

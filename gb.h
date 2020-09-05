@@ -13,6 +13,7 @@ class CPU {
   std::vector<uint8_t> switchableRam;
   std::vector<uint8_t> ram;
   std::vector<uint8_t> vram;
+  std::vector<uint8_t> oam;
   std::vector<uint8_t> zeropage;
 
   RegisterBank registers;
@@ -51,5 +52,6 @@ public:
 
   void dumpRom();
   void dumpVRam();
+  void dumpRam();
   void dumpRegisters();
 };
