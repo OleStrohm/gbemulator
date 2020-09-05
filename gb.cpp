@@ -29,7 +29,7 @@ int count = 0;
 bool CPU::step() {
   uint8_t opcode = read(registers.pc);
   if (!instr) {
-    if (logRegisters) {
+    if (logRegisters && registers.pc >= 0x100) {
       count++;
       //     if (count == 600000) {
       //       //dumpRam();

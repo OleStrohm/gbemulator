@@ -684,7 +684,7 @@ RST::RST(uint8_t n) : n(n), state(3) { finished = true; }
 
 std::unique_ptr<Instruction> RST::decode(uint8_t opcode) {
   if ((opcode >> 6) == 0b11 && (opcode & 0x7) == 0b111)
-    return std::make_unique<RST>(((opcode >> 3) & 0x7) << 3);
+    return std::make_unique<RST>(opcode & 0x38);
 
   return nullptr;
 }
@@ -692,16 +692,18 @@ std::unique_ptr<Instruction> RST::decode(uint8_t opcode) {
 bool RST::execute(CPU *cpu) {
   switch (state) {
   case 3: {
-    cpu->getRegisters().sp -= 2;
     state--;
     return false;
   }
   case 2: {
-    cpu->write(cpu->getRegisters().sp, cpu->getRegisters().pc);
+    cpu->getRegisters().sp--;
+    cpu->write(cpu->getRegisters().sp, (cpu->getRegisters().pc >> 8) & 0xFF);
     state--;
     return false;
   }
   case 1: {
+    cpu->getRegisters().sp--;
+    cpu->write(cpu->getRegisters().sp, cpu->getRegisters().pc & 0xFF);
     state--;
     return false;
   }
