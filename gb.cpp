@@ -31,8 +31,10 @@ bool CPU::step() {
   if (!instr) {
     if (logRegisters) {
       count++;
-      if (count == 1262767)
-		  exit(0);
+      //     if (count == 600000) {
+      //       //dumpRam();
+      //       exit(0);
+      //     }
 
       printf("A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X "
              "SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
@@ -99,7 +101,7 @@ uint8_t CPU::read(uint16_t addr) {
 
 void CPU::write(uint16_t addr, uint8_t value) {
   if (addr < 0x8000)
-    rom[addr] = value;
+    printf("ERROR: WRITING TO ROM\n");
   else if (addr >= 0x8000 && addr < 0xA000)
     vram[addr - 0x8000] = value;
   else if (addr >= 0xA000 && addr < 0xC000)
@@ -111,7 +113,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFE00 && addr < 0xFEA0)
     oam[addr - 0xE000] = value;
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    return;
+    if (addr == 0xFF01) {
+      fprintf(stderr, "%c", value);
+    }
     // if (addr == 0xFF26) {
     //  if (value >> 7)
     //    printf("Enabled Audio\n");
@@ -125,10 +129,10 @@ void CPU::write(uint16_t addr, uint8_t value) {
     // printf("Set Interrupt Register to 0x%02X\n", value);
   } else {
     breakpoint = true;
-    printf("ERROR: WRITE MEMORY OUT OF BOUNDS\n");
+    printf("ERROR: WRITE MEMORY OUT OF BOUNDS at %04X\n", addr);
   }
 }
-void CPU::dumpRom() { util::hexdump(rom, 0x1000); }
+void CPU::dumpRom() { util::hexdump(rom, rom.size()); }
 
 void CPU::dumpVRam() { util::hexdump(vram, vram.size(), 0x8000); }
 
@@ -171,7 +175,7 @@ int main(int argc, char **argv) {
   auto file = util::readFile(argv[1]);
 
   cpu.loadRom(file);
-  //  cpu.loadBoot(util::readFile("boot.bin"));
+  // cpu.loadBoot(util::readFile("boot.bin"));
   // cpu.dumpRom();
 
   while (!cpu.hasHalted()) {
@@ -185,6 +189,8 @@ int main(int argc, char **argv) {
           return 0;
         else if (in == "r") {
           cpu.dumpRegisters();
+        } else if (in == "drom") {
+          cpu.dumpRom();
         } else if (in == "dvr") {
           cpu.dumpVRam();
         } else if (in == "dram") {

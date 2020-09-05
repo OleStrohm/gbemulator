@@ -239,6 +239,8 @@ class Load : public Instruction {
   uint8_t direction;
   bool isC;
   bool actingOnSP;
+  bool writesSP;
+  uint8_t currentByte;
 
 public:
   Load();

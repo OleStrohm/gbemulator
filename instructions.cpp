@@ -55,13 +55,19 @@ bool SpecialAdd::execute(CPU *cpu) {
       return false;
     }
 
-    flags &= 0b10001111;
-    if (((uint32_t)cpu->getRegisters().sp) + ((uint32_t)(immediate)) > 0xFFFF)
+    int8_t relativeAddress = immediate;
+
+    flags &= 0b00001111;
+    if ((cpu->getRegisters().sp ^ relativeAddress ^
+         (cpu->getRegisters().sp + relativeAddress)) &
+        0x100)
       flags |= 1 << 4;
-    if ((cpu->getRegisters().sp & 0x0FFF) + (immediate & 0x0FFF) > 0x0FFF)
+    if ((cpu->getRegisters().sp ^ relativeAddress ^
+         (cpu->getRegisters().sp + relativeAddress)) &
+        0x10)
       flags |= 1 << 5;
 
-    cpu->getRegisters().sp += immediate;
+    cpu->getRegisters().sp += relativeAddress;
   }
 
   return true;
@@ -871,7 +877,8 @@ int ALU::getType() { return instruction::ALU; }
 
 Load::Load()
     : operation(0xFF), is16Bit(true), needsBytes(2), destination(0xFF),
-      source(0xFF), address(0), loadedAddress(false) {
+      source(0xFF), address(0), loadedAddress(false), actingOnSP(true),
+      writesSP(true), currentByte(0) {
   finished = false;
   isMemoryLoad = false;
   immediate = 0;
@@ -879,7 +886,7 @@ Load::Load()
 
 Load::Load(uint8_t operation)
     : operation(operation), needsBytes(0), source(0xFF), address(0),
-      loadedAddress(false) {
+      loadedAddress(false), writesSP(false), currentByte(0) {
   finished = true;
   isMemoryLoad = false;
   immediate = 0;
@@ -887,7 +894,8 @@ Load::Load(uint8_t operation)
 
 Load::Load(uint8_t destination, bool is16Bit, int dummy)
     : operation(0xFF), needsBytes(is16Bit ? 2 : 1), is16Bit(is16Bit),
-      destination(destination), source(0xFF), address(0), loadedAddress(false) {
+      destination(destination), source(0xFF), address(0), loadedAddress(false),
+      writesSP(false), currentByte(0) {
   finished = false;
   isMemoryLoad = false;
   immediate = 0;
@@ -895,7 +903,7 @@ Load::Load(uint8_t destination, bool is16Bit, int dummy)
 
 Load::Load(uint8_t destination, uint8_t source)
     : operation(0xFF), needsBytes(0), destination(destination), source(source),
-      address(0), loadedAddress(false) {
+      address(0), loadedAddress(false), writesSP(false), currentByte(0) {
   finished = true;
   isMemoryLoad = false;
   immediate = 0;
@@ -903,8 +911,11 @@ Load::Load(uint8_t destination, uint8_t source)
 
 Load::Load(uint8_t direction, bool isC, bool is16Bit, bool actingOnSP)
     : operation(0xFF), destination(0xFF), source(0xFF), direction(direction),
-      needsBytes(isC ? 0 : (is16Bit ? 2 : 1)), is16Bit(is16Bit), isC(isC),
-      actingOnSP(actingOnSP), loadedAddress(false) {
+      is16Bit(is16Bit), isC(isC), actingOnSP(actingOnSP), loadedAddress(false),
+      writesSP(false), currentByte(0) {
+  needsBytes = is16Bit ? 2 : 1;
+  if (isC || (actingOnSP && direction == 1))
+    needsBytes = 0;
   finished = needsBytes == 0;
   isMemoryLoad = true;
   immediate = 0;
@@ -952,7 +963,17 @@ void Load::amend(uint8_t val) {
 }
 
 bool Load::execute(CPU *cpu) {
-  if (isMemoryLoad) {
+  if (writesSP) {
+    if (currentByte == 0) {
+      cpu->write(immediate, cpu->getRegisters().sp & 0xFF);
+      LOG("Writing %02X to %04X", cpu->getRegisters().sp & 0xFF, immediate);
+      currentByte++;
+      return false;
+    }
+    cpu->write(immediate + 1, (cpu->getRegisters().sp >> 8) & 0xFF);
+    LOG("Writing %02X to %04X", (cpu->getRegisters().sp >> 8) & 0xFF,
+        immediate + 1);
+  } else if (isMemoryLoad) {
     if (isC) {
       if (!loadedAddress) {
         address = 0xFF00 + cpu->getRegisters().c;
@@ -971,11 +992,25 @@ bool Load::execute(CPU *cpu) {
       }
     } else if (actingOnSP) {
       if ((direction & 1) == 0) {
-        cpu->getRegisters().hl = cpu->getRegisters().sp + (int8_t)immediate;
+        uint8_t &flags = cpu->getRegisters().f;
+
+        int8_t relativeAddress = immediate;
+
+        flags &= 0b00001111;
+        if ((cpu->getRegisters().sp ^ relativeAddress ^
+             (cpu->getRegisters().sp + relativeAddress)) &
+            0x100)
+          flags |= 1 << 4;
+        if ((cpu->getRegisters().sp ^ relativeAddress ^
+             (cpu->getRegisters().sp + relativeAddress)) &
+            0x10)
+          flags |= 1 << 5;
+
+        cpu->getRegisters().hl = cpu->getRegisters().sp + relativeAddress;
         LOG("Moved %02X to HL (SP + %i)", cpu->getRegisters().hl,
-            (int8_t)immediate);
+            relativeAddress);
       } else {
-        cpu->getRegisters().a = cpu->read(address);
+        cpu->getRegisters().sp = cpu->getRegisters().hl;
         LOG("Moved %02X to SP from HL", cpu->getRegisters().sp);
       }
     } else {
@@ -1072,7 +1107,7 @@ bool Load::execute(CPU *cpu) {
         cpu->write(address, immediate);
         LOG("Wrote %02X to %04X\n", immediate, address);
       } else if (dest == nullptr) {
-        address = cpu->getRegisters().hl; // TODO: DOUBLE CHECK
+        address = cpu->getRegisters().hl;
         loadedAddress = true;
         LOG("Got address\n");
         return false;
@@ -1098,14 +1133,16 @@ bool Load::execute(CPU *cpu) {
     uint8_t *src = registerMapping[source];
 
     if (loadedAddress) {
-      if (src == nullptr) {
+      if (dest != nullptr) {
         *dest = cpu->read(address);
-        LOG("Read 0x%02X into %s from %04X\n", *src,
+        LOG("Read 0x%02X into %s from %04X\n", *dest,
             registerNames[destination].c_str(), address);
-      } else {
+      } else if (src != nullptr) {
         cpu->write(address, *src);
         LOG("Wrote 0x%02X from %s to %04X\n", *src,
             registerNames[source].c_str(), address);
+      } else {
+        printf("HALT\n");
       }
     } else if (dest == nullptr || src == nullptr) {
       address = cpu->getRegisters().hl;
@@ -1168,7 +1205,7 @@ void Jump::amend(uint8_t val) {
 bool Jump::execute(CPU *cpu) {
   uint8_t flags = cpu->getRegisters().f;
   if (jumpsToHL) {
-	  cpu->getRegisters().pc = cpu->getRegisters().hl;
+    cpu->getRegisters().pc = cpu->getRegisters().hl;
   } else if (checkedCondition || condition == Condition::Unconditional) {
     if (isDisplacement) {
       cpu->getRegisters().pc += (int8_t)addr;
