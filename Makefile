@@ -1,4 +1,18 @@
 SOURCE = gb.cpp instructions.cpp utils.cpp
+LDFLAGS = `pkg-config --static --libs glfw3` -lGLEW -lGL
+
+ppu: ppu.cpp ppu.h
+	clang++ -std=c++17 -o ./build/debug/ppu ppu.cpp utils.cpp $(LDFLAGS)
+
+ppudebug: ppu.cpp ppu.h
+	clang++ -g -std=c++17 -o ./build/debug/ppu ppu.cpp utils.cpp $(LDFLAGS)
+
+test: ppu
+	./build/debug/ppu
+
+gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
+	mkdir -p build/debug
+	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE)
 
 debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug

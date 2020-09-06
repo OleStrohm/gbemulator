@@ -271,12 +271,10 @@ void CPU::dumpRegisters() {
 int main(int argc, char **argv) {
   CPU cpu;
 
-  if (argc != 2)
-    return 0;
-
-  auto file = util::readFile(argv[1]);
-
-  cpu.loadRom(file);
+  if (argc == 2) {
+    auto file = util::readFile(argv[1]);
+    cpu.loadRom(file);
+  }
   cpu.loadBoot(util::readFile("boot.bin"));
   cpu.dumpBoot();
 
