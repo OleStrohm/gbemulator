@@ -9,6 +9,95 @@
   if (!instr)                                                                  \
   instr = X::decode(opcode)
 
+DAA::DAA() { finished = true; }
+
+std::unique_ptr<Instruction> DAA::decode(uint8_t opcode) {
+	if(opcode == 0b00100111)
+		return std::make_unique<DAA>();
+
+	return nullptr;
+}
+
+bool DAA::execute(CPU *cpu) {
+	uint8_t &flags = cpu->getRegisters().f;
+
+	uint8_t correction = 0;
+
+	uint8_t daa = cpu->getRegisters().a;
+	bool shouldSetCarry = false;
+
+	if (flags & (1<<5) || (!(flags & (1<<6)) && (daa & 0xF) > 9)) {
+		correction |= 0x6;
+	}
+
+	if ((flags & (1 << 4)) || (!(flags & (1 << 6)) && daa > 0x99)) {
+		correction |= 0x60;
+		shouldSetCarry = true;
+	}
+
+	daa += (flags & (1 << 6)) ? -correction : correction;
+
+	daa &= 0xFF;
+
+	flags &= 0b01001111;
+
+	if (shouldSetCarry)
+		flags |= 1 << 4;
+	if (daa == 0)
+		flags |= 1 << 7;
+	cpu->getRegisters().a = daa;
+
+	return true;
+}
+
+std::string DAA::getName() { return "DAA"; }
+int DAA::getType() { return instruction::DAA; }
+
+Complement::Complement() { finished = true; }
+
+std::unique_ptr<Instruction> Complement::decode(uint8_t opcode) {
+  if (opcode == 0b00101111)
+    return std::make_unique<Complement>();
+
+  return nullptr;
+}
+
+bool Complement::execute(CPU *cpu) {
+  cpu->getRegisters().a = ~cpu->getRegisters().a;
+
+  return true;
+}
+
+std::string Complement::getName() { return "Complement"; }
+int Complement::getType() { return instruction::CPL; }
+
+SetClearCarryFlag::SetClearCarryFlag(bool shouldSet) : shouldSet(shouldSet) {
+  finished = true;
+}
+
+std::unique_ptr<Instruction> SetClearCarryFlag::decode(uint8_t opcode) {
+  if (opcode == 0b00110111)
+    return std::make_unique<SetClearCarryFlag>(true);
+  if (opcode == 0b00111111)
+    return std::make_unique<SetClearCarryFlag>(false);
+
+  return nullptr;
+}
+
+bool SetClearCarryFlag::execute(CPU *cpu) {
+  if (shouldSet)
+    cpu->getRegisters().f |= 1 << 4;
+  else
+    cpu->getRegisters().f &= 0b11101111;
+
+  return true;
+}
+
+std::string SetClearCarryFlag::getName() {
+  return shouldSet ? "Set Carry" : "Clear Carry";
+}
+int SetClearCarryFlag::getType() { return instruction::SetClearCarryFlag; }
+
 SpecialAdd::SpecialAdd(uint8_t reg) : reg(reg), immediate(0), wastedCycles(0) {
   finished = reg != 0xFF;
 }
@@ -265,6 +354,7 @@ bool PopPush::execute(CPU *cpu) {
     LOG("POP %s (%02X from %04X)\n", registerNames[currentByte][reg].c_str(),
         ((uint8_t *)registerMapping[reg])[currentByte], cpu->getRegisters().sp);
     cpu->getRegisters().sp++;
+    cpu->getRegisters().f &= 0b11110000;
   } else {
     cpu->getRegisters().sp--;
     cpu->write(cpu->getRegisters().sp,
@@ -1145,6 +1235,8 @@ bool Load::execute(CPU *cpu) {
             registerNames[source].c_str(), address);
       } else {
         printf("HALT\n");
+        while (true)
+          ;
       }
     } else if (dest == nullptr || src == nullptr) {
       address = cpu->getRegisters().hl;
@@ -1262,6 +1354,9 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
   DECODE(SpecialAdd);
   DECODE(IncDec);
   DECODE(RotateA);
+  DECODE(DAA);
+  DECODE(Complement);
+  DECODE(SetClearCarryFlag);
   DECODE(Load);
   DECODE(ALU);
   DECODE(PopPush);

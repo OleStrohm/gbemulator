@@ -15,6 +15,10 @@ enum : int {
   Inc,
   Dec,
   RotateA,
+  Stop,
+  DAA,
+  CPL,
+  SetClearCarryFlag,
   Load,
   ALU,
   PopPush,
@@ -50,6 +54,44 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class DAA : public Instruction {
+public:
+  DAA();
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
+class Complement : public Instruction {
+public:
+  Complement();
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
+
+class SetClearCarryFlag : public Instruction {
+  bool shouldSet;
+
+public:
+  SetClearCarryFlag(bool shouldSet);
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class SpecialAdd : public Instruction {
   uint8_t reg;

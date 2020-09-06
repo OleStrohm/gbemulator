@@ -31,10 +31,11 @@ bool CPU::step() {
   if (!instr) {
     if (logRegisters && registers.pc >= 0x100) {
       count++;
-      //     if (count == 600000) {
-      //       //dumpRam();
-      //       exit(0);
-      //     }
+      //if (count == 1258896) {
+      //  // dumpRam();
+      //  std::cerr << std::endl;
+      //  exit(0);
+      //}
 
       printf("A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X "
              "SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
