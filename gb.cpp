@@ -4,6 +4,17 @@
 #include "utils.h"
 #include <iostream>
 
+constexpr uint8_t interruptVblank = 1 << 0;
+constexpr uint16_t interruptVblankAddress = 0x0040;
+constexpr uint8_t interruptLCDC = 1 << 1;
+constexpr uint16_t interruptLCDCAddress = 0x0048;
+constexpr uint8_t interruptTimer = 1 << 2;
+constexpr uint16_t interruptTimerAddress = 0x0050;
+constexpr uint8_t interruptSerialComplete = 1 << 3;
+constexpr uint16_t interruptSerialCompleteAddress = 0x0058;
+constexpr uint8_t interruptInput = 1 << 4;
+constexpr uint16_t interruptInputAddress = 0x0060;
+
 constexpr bool logRegisters = true;
 
 CPU::CPU()
@@ -27,11 +38,53 @@ CPU::CPU()
 int count = 0;
 
 bool CPU::step() {
+  if (interruptChangeStateDelay >= 0) {
+    if (interruptChangeStateDelay == 0) {
+		interruptsEnabled = interruptsShouldBeEnabled;
+    }
+    interruptChangeStateDelay--;
+  }
+
   uint8_t opcode = read(registers.pc);
   if (!instr) {
-    if (logRegisters && registers.pc >= 0x100) {
+    if (interruptsEnabled && IF) {
+      uint16_t interruptAddress = 0xFFFF;
+      fprintf(stderr, "Interrupt!\n");
+      if (IE & interruptVblank && IF & interruptVblank) {
+        interruptAddress = interruptVblankAddress;
+        IF &= ~interruptVblank;
+      } else if (IE & interruptLCDC && IF & interruptLCDC) {
+        interruptAddress = interruptLCDCAddress;
+        IF &= ~interruptLCDC;
+      } else if (IE & interruptTimer && IF & interruptTimer) {
+        interruptAddress = interruptTimerAddress;
+        IF &= ~interruptTimer;
+      } else if (IE & interruptSerialComplete && IF & interruptSerialComplete) {
+        interruptAddress = interruptSerialCompleteAddress;
+        IF &= ~interruptSerialComplete;
+      } else if (IE & interruptInput && IF & interruptInput) {
+        interruptAddress = interruptInput;
+        IF &= ~interruptInput;
+      }
+
+      if (interruptAddress != 0xFFFF) {
+        setInterruptEnable(false);
+        registers.sp--;
+		printf("Writing PC to (SP)\n");
+        write(registers.sp, registers.pc >> 8);
+        registers.sp--;
+        write(registers.sp, registers.pc & 0xFF);
+		printf("Finished writing PC to (SP)\n");
+
+        registers.pc = interruptAddress;
+        return !breakpoint;
+      } else {
+        IF = 0;
+      }
+    }
+    if (logRegisters && registers.pc != 0x100) {
       count++;
-      //if (count == 1258896) {
+      // if (count == 1258896) {
       //  // dumpRam();
       //  std::cerr << std::endl;
       //  exit(0);
@@ -101,9 +154,10 @@ uint8_t CPU::read(uint16_t addr) {
 }
 
 void CPU::write(uint16_t addr, uint8_t value) {
-  if (addr < 0x8000)
-    printf("ERROR: WRITING TO ROM\n");
-  else if (addr >= 0x8000 && addr < 0xA000)
+  if (addr < 0x8000) {
+    breakpoint = true;
+    printf("ERROR: WRITING %02X TO ROM at %04X\n", value, addr);
+  } else if (addr >= 0x8000 && addr < 0xA000)
     vram[addr - 0x8000] = value;
   else if (addr >= 0xA000 && addr < 0xC000)
     switchableRam[addr - 0xA000] = value;
@@ -116,18 +170,14 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr == 0xFF01) {
       fprintf(stderr, "%c", value);
+    } else if (addr == 0xFF0F) {
+	  printf("Made Interrupt happen\n");	
+      IF = value;
     }
-    // if (addr == 0xFF26) {
-    //  if (value >> 7)
-    //    printf("Enabled Audio\n");
-    //  else
-    //    printf("Disabled Audio\n");
-    //} else
-    //  printf("%02X: Wrote %02X to IO at %04X\n", registers.pc, value, addr);
   } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
     zeropage[addr - 0xFF80] = value;
   } else if (addr == 0xFFFF) {
-    // printf("Set Interrupt Register to 0x%02X\n", value);
+    IE = value;
   } else {
     breakpoint = true;
     printf("ERROR: WRITE MEMORY OUT OF BOUNDS at %04X\n", addr);
@@ -182,6 +232,7 @@ int main(int argc, char **argv) {
   while (!cpu.hasHalted()) {
     if (!cpu.step()) {
       bool moveOn = false;
+	  fprintf(stderr, "Breakpoint");
       while (!moveOn) {
         std::string in;
         getline(std::cin, in);

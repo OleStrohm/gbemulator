@@ -19,7 +19,16 @@ class CPU {
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
 
+  uint16_t DIV;
+  uint8_t TIMA;
+  uint8_t TMA;
+  uint8_t TAC;
+  uint8_t IF;
+  uint8_t IE;
+
   bool interruptsEnabled = false;
+  bool interruptsShouldBeEnabled = false;
+  uint8_t interruptChangeStateDelay = -1;
   bool halted = false;
   bool breakpoint = false;
 
@@ -29,7 +38,9 @@ public:
   bool step();
 
   void setInterruptEnable(bool enableInterrupts) {
-    interruptsEnabled = enableInterrupts;
+    fprintf(stderr, "%s interrupts", enableInterrupts ? "Enabled" : "Disabled");
+    interruptsShouldBeEnabled = enableInterrupts;
+    interruptChangeStateDelay = 2;
   }
 
   bool hasHalted() { return halted; }
