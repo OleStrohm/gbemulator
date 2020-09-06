@@ -9,45 +9,63 @@
   if (!instr)                                                                  \
   instr = X::decode(opcode)
 
+Halt::Halt() { finished = true; }
+
+std::unique_ptr<Instruction> Halt::decode(uint8_t opcode) {
+  if (opcode == 0b01110110)
+    return std::make_unique<Halt>();
+
+  return nullptr;
+}
+
+bool Halt::execute(CPU *cpu) {
+	cpu->setHalted();
+
+	return true;
+}
+
+std::string Halt::getName() { return "Halt"; }
+int Halt::getType() { return instruction::HALT; }
+
 DAA::DAA() { finished = true; }
 
 std::unique_ptr<Instruction> DAA::decode(uint8_t opcode) {
-	if(opcode == 0b00100111)
-		return std::make_unique<DAA>();
+  if (opcode == 0b00100111)
+    return std::make_unique<DAA>();
 
-	return nullptr;
+  return nullptr;
 }
 
 bool DAA::execute(CPU *cpu) {
-	uint8_t &flags = cpu->getRegisters().f;
+  uint8_t &flags = cpu->getRegisters().f;
 
-	uint8_t correction = 0;
+  uint8_t correction = 0;
 
-	uint8_t daa = cpu->getRegisters().a;
-	bool shouldSetCarry = false;
+  uint8_t daa = cpu->getRegisters().a;
+  bool shouldSetCarry = false;
 
-	if (flags & (1<<5) || (!(flags & (1<<6)) && (daa & 0xF) > 9)) {
-		correction |= 0x6;
-	}
+  if (flags & (1 << 5) || (!(flags & (1 << 6)) && (daa & 0xF) > 9)) {
+    correction |= 0x6;
+  }
 
-	if ((flags & (1 << 4)) || (!(flags & (1 << 6)) && daa > 0x99)) {
-		correction |= 0x60;
-		shouldSetCarry = true;
-	}
+  if ((flags & (1 << 4)) || (!(flags & (1 << 6)) && daa > 0x99)) {
+    correction |= 0x60;
+    shouldSetCarry = true;
+  }
 
-	daa += (flags & (1 << 6)) ? -correction : correction;
+  daa += (flags & (1 << 6)) ? -correction : correction;
 
-	daa &= 0xFF;
+  daa &= 0xFF;
 
-	flags &= 0b01001111;
+  flags &= 0b01001111;
 
-	if (shouldSetCarry)
-		flags |= 1 << 4;
-	if (daa == 0)
-		flags |= 1 << 7;
-	cpu->getRegisters().a = daa;
+  if (shouldSetCarry)
+    flags |= 1 << 4;
+  if (daa == 0)
+    flags |= 1 << 7;
+  cpu->getRegisters().a = daa;
 
-	return true;
+  return true;
 }
 
 std::string DAA::getName() { return "DAA"; }
@@ -64,6 +82,7 @@ std::unique_ptr<Instruction> Complement::decode(uint8_t opcode) {
 
 bool Complement::execute(CPU *cpu) {
   cpu->getRegisters().a = ~cpu->getRegisters().a;
+  cpu->getRegisters().f |= 0b01100000;
 
   return true;
 }
@@ -85,10 +104,17 @@ std::unique_ptr<Instruction> SetClearCarryFlag::decode(uint8_t opcode) {
 }
 
 bool SetClearCarryFlag::execute(CPU *cpu) {
-  if (shouldSet)
-    cpu->getRegisters().f |= 1 << 4;
-  else
-    cpu->getRegisters().f &= 0b11101111;
+	uint8_t &flags = cpu->getRegisters().f;
+	flags &= 0b10011111;
+  if (shouldSet) {
+    flags |= 1 << 4;
+  } else {
+	  if (flags & (1 << 4)) {
+		flags &= 0b10001111;
+	  } else {
+		  flags |= 1<< 4;
+	  }
+  }
 
   return true;
 }
@@ -508,9 +534,9 @@ bool IncDec::execute(CPU *cpu) {
 
       if (!increment)
         flags |= 0b01000000;
-      if (increment && (storedValue + 1) == 0)
+      if (increment && ((storedValue + 1) & 0xFF) == 0)
         flags |= 0b10000000;
-      if (!increment && (storedValue - 1) == 0)
+      if (!increment && ((storedValue - 1) & 0xFF) == 0)
         flags |= 0b10000000;
     } else {
       flags &= 0b00010000;
@@ -706,6 +732,10 @@ bool ExtendedInstruction::execute(CPU *cpu) {
   } else if (instruction >> 3 == 0b00110) { // SWAP D
     LOG("SWAP\n");
     result = (result << 4) | (result >> 4);
+
+	flags &= 0b00001111;
+	if (result == 0)
+		flags |= 1 << 7;
 
     if (registerMapping[instruction & 0x7] != nullptr) {
       *registerMapping[instruction & 0x7] = result;
@@ -1358,6 +1388,7 @@ std::unique_ptr<Instruction> decode(uint8_t opcode) {
   DECODE(Complement);
   DECODE(SetClearCarryFlag);
   DECODE(Load);
+  DECODE(Halt);
   DECODE(ALU);
   DECODE(PopPush);
   DECODE(RST);

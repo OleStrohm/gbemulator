@@ -15,12 +15,17 @@ constexpr uint16_t interruptSerialCompleteAddress = 0x0058;
 constexpr uint8_t interruptInput = 1 << 4;
 constexpr uint16_t interruptInputAddress = 0x0060;
 
+constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
+
 constexpr bool logRegisters = true;
 
 CPU::CPU()
     : rom(0x8000), switchableRam(0x2000), ram(0x2000), vram(0x2000),
       oam(0xFEA0 - 0xFE00), zeropage(0xFFFE - 0xFF80) {
   registers.pc = 0;
+  clockCycle = 0;
+  TAC = 0;
+  IF = 0;
   if (logRegisters) {
     registers.pc = 0x100;
     registers.sp = 0xFFFE;
@@ -38,18 +43,34 @@ CPU::CPU()
 int count = 0;
 
 bool CPU::step() {
+  clockCycle++;
+  if (clockCycle % 64) {
+    DIV++;
+  }
+  if (clockCycle % timerDividerLUT[TAC & 0x3] == 0 && TAC & 0x4 &&
+      ++TIMA == 0) {
+    IF |= interruptTimer;
+    TIMA = TMA;
+  }
   if (interruptChangeStateDelay >= 0) {
     if (interruptChangeStateDelay == 0) {
-		interruptsEnabled = interruptsShouldBeEnabled;
+      interruptsEnabled = interruptsShouldBeEnabled;
     }
     interruptChangeStateDelay--;
+  }
+  if (halted) {
+    if (IF == 0)
+      return !breakpoint;
+
+    halted = false;
+    if (!interruptsEnabled)
+      hasRecoveredFromHalt = false;
   }
 
   uint8_t opcode = read(registers.pc);
   if (!instr) {
     if (interruptsEnabled && IF) {
       uint16_t interruptAddress = 0xFFFF;
-      fprintf(stderr, "Interrupt!\n");
       if (IE & interruptVblank && IF & interruptVblank) {
         interruptAddress = interruptVblankAddress;
         IF &= ~interruptVblank;
@@ -70,11 +91,9 @@ bool CPU::step() {
       if (interruptAddress != 0xFFFF) {
         setInterruptEnable(false);
         registers.sp--;
-		printf("Writing PC to (SP)\n");
         write(registers.sp, registers.pc >> 8);
         registers.sp--;
         write(registers.sp, registers.pc & 0xFF);
-		printf("Finished writing PC to (SP)\n");
 
         registers.pc = interruptAddress;
         return !breakpoint;
@@ -82,7 +101,7 @@ bool CPU::step() {
         IF = 0;
       }
     }
-    if (logRegisters && registers.pc != 0x100) {
+    if (logRegisters && registers.pc >= 0x100) {
       count++;
       // if (count == 1258896) {
       //  // dumpRam();
@@ -113,14 +132,17 @@ bool CPU::step() {
     instr->amend(opcode);
   }
 
-  registers.pc++;
+  if (hasRecoveredFromHalt)
+    registers.pc++;
 
   if (instr->isFinished()) {
     if (instr->execute(this))
       instr = nullptr;
-    else
+    else if (hasRecoveredFromHalt)
       registers.pc--;
   }
+
+  hasRecoveredFromHalt = true;
 
   // if (registers.pc == 0xC5FA)
   // breakpoint = true;
@@ -142,8 +164,21 @@ uint8_t CPU::read(uint16_t addr) {
   if (addr >= 0xFE00 && addr < 0xFEA0)
     return oam[addr - 0xE000];
   if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF04)
+      return DIV;
+    if (addr == 0xFF05)
+      return TIMA;
+    if (addr == 0xFF06)
+      return TMA;
+    if (addr == 0xFF07)
+      return TAC;
+    if (addr == 0xFF0F)
+      return IF;
+    if (addr == 0xFF44)
+      return 0x90;
 
-    return 0x90;
+    fprintf(stderr, "UNCONNECTED IO at %04X\n", addr);
+    return 0xFF;
   }
   if (addr >= 0xFF80 && addr <= 0xFFFE)
     return zeropage[addr - 0xFF80];
@@ -170,8 +205,15 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr == 0xFF01) {
       fprintf(stderr, "%c", value);
+    } else if (addr == 0xFF04) {
+      DIV = 0;
+    } else if (addr == 0xFF05) {
+      TIMA = value;
+    } else if (addr == 0xFF06) {
+      TMA = value;
+    } else if (addr == 0xFF07) {
+      TAC = value;
     } else if (addr == 0xFF0F) {
-	  printf("Made Interrupt happen\n");	
       IF = value;
     }
   } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
@@ -229,10 +271,10 @@ int main(int argc, char **argv) {
   // cpu.loadBoot(util::readFile("boot.bin"));
   // cpu.dumpRom();
 
-  while (!cpu.hasHalted()) {
+  while (true) {
     if (!cpu.step()) {
       bool moveOn = false;
-	  fprintf(stderr, "Breakpoint");
+      fprintf(stderr, "Breakpoint");
       while (!moveOn) {
         std::string in;
         getline(std::cin, in);

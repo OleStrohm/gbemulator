@@ -20,6 +20,7 @@ enum : int {
   CPL,
   SetClearCarryFlag,
   Load,
+  HALT,
   ALU,
   PopPush,
   Ret,
@@ -54,6 +55,18 @@ public:
 namespace instruction {
 std::unique_ptr<Instruction> decode(uint8_t opcode);
 }
+
+class Halt : public Instruction {
+public:
+  Halt();
+
+  static std::unique_ptr<Instruction> decode(uint8_t opcode);
+
+  virtual bool execute(CPU *cpu) override;
+
+  virtual std::string getName() override;
+  virtual int getType() override;
+};
 
 class DAA : public Instruction {
 public:

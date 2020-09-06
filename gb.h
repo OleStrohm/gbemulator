@@ -18,6 +18,7 @@ class CPU {
 
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
+  uint64_t clockCycle;
 
   uint16_t DIV;
   uint8_t TIMA;
@@ -30,6 +31,7 @@ class CPU {
   bool interruptsShouldBeEnabled = false;
   uint8_t interruptChangeStateDelay = -1;
   bool halted = false;
+  bool hasRecoveredFromHalt = true;
   bool breakpoint = false;
 
 public:
@@ -38,11 +40,14 @@ public:
   bool step();
 
   void setInterruptEnable(bool enableInterrupts) {
-    fprintf(stderr, "%s interrupts", enableInterrupts ? "Enabled" : "Disabled");
     interruptsShouldBeEnabled = enableInterrupts;
     interruptChangeStateDelay = 2;
   }
 
+  void setHalted() {
+    halted = true;
+    hasRecoveredFromHalt = true;
+  }
   bool hasHalted() { return halted; }
   RegisterBank &getRegisters() { return registers; }
 
