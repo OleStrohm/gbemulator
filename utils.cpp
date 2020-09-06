@@ -94,7 +94,7 @@ void hexdump(std::vector<uint8_t> hex, size_t length, size_t base) {
     }
   }
   if (wasCopy)
-    printf("%08x:\n", base + c);
+    printf("%08lx:\n", base + c);
 }
 
 } // namespace util

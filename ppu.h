@@ -15,8 +15,10 @@ class PPU {
   uint8_t LX = 0;
   bool invalidated = false;
 
+public:
   GLubyte *pixelData = 0;
 
+private:
   GLFWwindow *window;
   unsigned int screenTexture;
   unsigned int vao, vbo, pbo;

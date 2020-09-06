@@ -17,7 +17,7 @@ constexpr uint16_t interruptInputAddress = 0x0060;
 
 constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
 
-constexpr bool logRegisters = false;
+constexpr bool logRegisters = true;
 
 CPU::CPU()
     : boot(0x100), rom(0x8000), switchableRam(0x2000), ram(0x2000),
@@ -27,16 +27,15 @@ CPU::CPU()
   TAC = 0;
   IF = 0;
   if (logRegisters) {
-    registers.pc = 0x100;
-    registers.sp = 0xFFFE;
-    registers.a = 0x01;
-    registers.f = 0xB0;
-    registers.b = 0x00;
-    registers.c = 0x13;
-    registers.d = 0x00;
-    registers.e = 0xD8;
-    registers.h = 0x01;
-    registers.l = 0x4D;
+	  registers.a = 0;
+	  registers.f = 0;
+	  registers.b = 0;
+	  registers.c = 0;
+	  registers.d = 0;
+	  registers.e = 0;
+	  registers.h = 0;
+	  registers.l = 0;
+	  registers.sp = 0;
   }
 }
 
@@ -69,8 +68,9 @@ bool CPU::step() {
 
   uint8_t opcode = read(registers.pc);
   if (!instr) {
-    if (registers.pc == 0x55) {
-      breakpoint = true;
+    if (registers.pc == 0x86) {
+		dumpVRam();
+		exit(0);
     }
 
     if (interruptsEnabled && IF) {
@@ -105,7 +105,7 @@ bool CPU::step() {
         IF = 0;
       }
     }
-    if (logRegisters && registers.pc >= 0x56) {
+    if (logRegisters) {
       printf("A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X "
              "SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
              registers.a, registers.f, registers.b, registers.c, registers.d,
@@ -116,9 +116,9 @@ bool CPU::step() {
 
     instr = instruction::decode(opcode);
     if (instr->getType() != instruction::Nop) {
-      printf("0x%04X: %02X | ", registers.pc, opcode);
-      util::printfBits("", opcode, 8);
-      printf("\tInstruction: %s\n", instr->getName().c_str());
+      //printf("0x%04X: %02X | ", registers.pc, opcode);
+      //util::printfBits("", opcode, 8);
+      //printf("\tInstruction: %s\n", instr->getName().c_str());
     }
 
     if (instr->getType() == instruction::Unsupported) {
@@ -174,6 +174,10 @@ uint8_t CPU::read(uint16_t addr) {
       return TAC;
     if (addr == 0xFF0F)
       return IF;
+	if (addr == 0xFF42) {
+		fprintf(stderr, "Read SCY\n");
+		return 0xFF;
+	}
     if (addr == 0xFF44)
       return 0x90;
 
@@ -276,7 +280,7 @@ int main(int argc, char **argv) {
     cpu.loadRom(file);
   }
   cpu.loadBoot(util::readFile("boot.bin"));
-  cpu.dumpBoot();
+  //cpu.dumpBoot();
 
   while (true) {
     if (!cpu.step()) {
