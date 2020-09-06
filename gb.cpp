@@ -17,11 +17,11 @@ constexpr uint16_t interruptInputAddress = 0x0060;
 
 constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
 
-constexpr bool logRegisters = true;
+constexpr bool logRegisters = false;
 
 CPU::CPU()
-    : rom(0x8000), switchableRam(0x2000), ram(0x2000), vram(0x2000),
-      oam(0xFEA0 - 0xFE00), zeropage(0xFFFE - 0xFF80) {
+    : boot(0x100), rom(0x8000), switchableRam(0x2000), ram(0x2000),
+      vram(0x2000), oam(0xFEA0 - 0xFE00), zeropage(0xFFFE - 0xFF80) {
   registers.pc = 0;
   clockCycle = 0;
   TAC = 0;
@@ -69,6 +69,10 @@ bool CPU::step() {
 
   uint8_t opcode = read(registers.pc);
   if (!instr) {
+    if (registers.pc == 0x55) {
+      breakpoint = true;
+    }
+
     if (interruptsEnabled && IF) {
       uint16_t interruptAddress = 0xFFFF;
       if (IE & interruptVblank && IF & interruptVblank) {
@@ -101,14 +105,7 @@ bool CPU::step() {
         IF = 0;
       }
     }
-    if (logRegisters && registers.pc >= 0x100) {
-      count++;
-      // if (count == 1258896) {
-      //  // dumpRam();
-      //  std::cerr << std::endl;
-      //  exit(0);
-      //}
-
+    if (logRegisters && registers.pc >= 0x56) {
       printf("A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X "
              "SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
              registers.a, registers.f, registers.b, registers.c, registers.d,
@@ -119,9 +116,9 @@ bool CPU::step() {
 
     instr = instruction::decode(opcode);
     if (instr->getType() != instruction::Nop) {
-      // printf("0x%04X: %02X | ", registers.pc, opcode);
-      // util::printfBits("", opcode, 8);
-      // printf("\tInstruction: %s\n", instr->getName().c_str());
+      printf("0x%04X: %02X | ", registers.pc, opcode);
+      util::printfBits("", opcode, 8);
+      printf("\tInstruction: %s\n", instr->getName().c_str());
     }
 
     if (instr->getType() == instruction::Unsupported) {
@@ -151,8 +148,11 @@ bool CPU::step() {
 }
 
 uint8_t CPU::read(uint16_t addr) {
-  if (addr < 0x8000)
+  if (addr < 0x8000) {
+    if (!unlockedBootRom && addr < 0x100)
+      return boot[addr];
     return rom[addr];
+  }
   if (addr >= 0x8000 && addr < 0xA000)
     return vram[addr - 0x8000];
   if (addr >= 0xA000 && addr < 0xC000)
@@ -182,6 +182,8 @@ uint8_t CPU::read(uint16_t addr) {
   }
   if (addr >= 0xFF80 && addr <= 0xFFFE)
     return zeropage[addr - 0xFF80];
+  if (addr == 0xFFFF)
+    return IE;
 
   breakpoint = true;
   printf("ERROR: READ MEMORY OUT OF BOUNDS : %04X\n", addr);
@@ -215,6 +217,10 @@ void CPU::write(uint16_t addr, uint8_t value) {
       TAC = value;
     } else if (addr == 0xFF0F) {
       IF = value;
+    } else if (addr == 0xFF42) {
+      fprintf(stderr, "Wrote %02x to SCY\n", value);
+    } else if (addr == 0xFF43) {
+      fprintf(stderr, "Wrote %02x to SCX\n", value);
     }
   } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
     zeropage[addr - 0xFF80] = value;
@@ -225,6 +231,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
     printf("ERROR: WRITE MEMORY OUT OF BOUNDS at %04X\n", addr);
   }
 }
+
+void CPU::dumpBoot() { util::hexdump(boot, boot.size()); }
+
 void CPU::dumpRom() { util::hexdump(rom, rom.size()); }
 
 void CPU::dumpVRam() { util::hexdump(vram, vram.size(), 0x8000); }
@@ -268,13 +277,12 @@ int main(int argc, char **argv) {
   auto file = util::readFile(argv[1]);
 
   cpu.loadRom(file);
-  // cpu.loadBoot(util::readFile("boot.bin"));
-  // cpu.dumpRom();
+  cpu.loadBoot(util::readFile("boot.bin"));
+  cpu.dumpBoot();
 
   while (true) {
     if (!cpu.step()) {
       bool moveOn = false;
-      fprintf(stderr, "Breakpoint");
       while (!moveOn) {
         std::string in;
         getline(std::cin, in);
@@ -283,9 +291,11 @@ int main(int argc, char **argv) {
           return 0;
         else if (in == "r") {
           cpu.dumpRegisters();
+        } else if (in == "dboot") {
+          cpu.dumpBoot();
         } else if (in == "drom") {
           cpu.dumpRom();
-        } else if (in == "dvr") {
+        } else if (in == "dvram") {
           cpu.dumpVRam();
         } else if (in == "dram") {
           cpu.dumpRam();

@@ -1,4 +1,4 @@
 #pragma once
 
-//#define LOG(args...) printf(args);
-#define LOG(args...)
+#define LOG(args...) printf(args);
+//#define LOG(args...)

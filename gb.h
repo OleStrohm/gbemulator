@@ -9,6 +9,7 @@
 class Instruction;
 
 class CPU {
+  std::vector<uint8_t> boot;
   std::vector<uint8_t> rom;
   std::vector<uint8_t> switchableRam;
   std::vector<uint8_t> ram;
@@ -30,8 +31,12 @@ class CPU {
   bool interruptsEnabled = false;
   bool interruptsShouldBeEnabled = false;
   uint8_t interruptChangeStateDelay = -1;
+
   bool halted = false;
   bool hasRecoveredFromHalt = true;
+
+  bool unlockedBootRom = false;
+
   bool breakpoint = false;
 
 public:
@@ -60,12 +65,9 @@ public:
     this->rom.resize(biosSize);
   }
 
-  void loadBoot(std::vector<uint8_t> boot) {
-    for (int i = 0; i < boot.size(); i++) {
-      this->rom[i] = boot[i];
-    }
-  }
+  void loadBoot(std::vector<uint8_t> boot) { this->boot = boot; }
 
+  void dumpBoot();
   void dumpRom();
   void dumpVRam();
   void dumpRam();
