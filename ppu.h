@@ -1,3 +1,5 @@
+#pragma once
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <mutex>
@@ -11,16 +13,20 @@ constexpr int BYTES_PER_PIXEL = 3;
 class PPU {
   uint8_t LCDC;
 
+  uint8_t BGP = 0;
+
   uint8_t SCY = 0;
   uint8_t SCX = 0;
+  uint8_t LYC = 0;
   uint8_t LY = 0;
   uint8_t LX = 0;
   bool invalidated = false;
 
   std::vector<uint8_t> vram;
+  std::vector<uint8_t> oam;
 
-public:
-  GLubyte *pixelData = 0;
+  GLubyte *textureData = 0;
+  uint8_t *pixels = 0;
 
 private:
   GLFWwindow *window;
@@ -38,7 +44,7 @@ public:
   PPU();
 
   void step();
-  int8_t getColorForTile(uint8_t index, uint8_t x, uint8_t y);
+  int8_t getColorForTile(uint16_t baseAddr, uint8_t index, uint8_t x, uint8_t y);
 
   void setup();
   void render();
@@ -46,7 +52,8 @@ public:
 
   void invalidate();
 
-  void setLCDC(uint8_t LCDC) { this->LCDC = LCDC; }
+  uint8_t read(uint16_t addr);
+  void write(uint16_t addr, uint8_t value);
 
   bool isClosed();
   void close();

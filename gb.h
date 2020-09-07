@@ -1,6 +1,7 @@
 #pragma once
 
 #include "register.h"
+#include "bus.h"
 
 #include <cstdio>
 #include <memory>
@@ -10,12 +11,10 @@ class Instruction;
 
 class CPU {
   std::vector<uint8_t> boot;
-  std::vector<uint8_t> rom;
-  std::vector<uint8_t> switchableRam;
   std::vector<uint8_t> ram;
-  std::vector<uint8_t> vram;
-  std::vector<uint8_t> oam;
   std::vector<uint8_t> zeropage;
+
+  Bus* bus;
 
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
@@ -40,7 +39,7 @@ class CPU {
   bool breakpoint = false;
 
 public:
-  CPU();
+  CPU(Bus* bus);
 
   bool step();
 
@@ -59,17 +58,9 @@ public:
   uint8_t read(uint16_t addr);
   void write(uint16_t addr, uint8_t value);
 
-  void loadRom(std::vector<uint8_t> rom) {
-    auto biosSize = rom.size();
-    this->rom = rom;
-    this->rom.resize(biosSize);
-  }
-
   void loadBoot(std::vector<uint8_t> boot) { this->boot = boot; }
 
   void dumpBoot();
-  void dumpRom();
-  void dumpVRam();
   void dumpRam();
   void dumpRegisters();
 };

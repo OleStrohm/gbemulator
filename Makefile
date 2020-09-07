@@ -1,26 +1,20 @@
-SOURCE = gb.cpp instructions.cpp utils.cpp
+SOURCE = gb.cpp ppu.cpp bus.cpp instructions.cpp utils.cpp
 LDFLAGS = `pkg-config --static --libs glfw3` -lGLEW -lGL
-
-ppu: ppu.cpp ppu.h
-	clang++ -std=c++17 -o ./build/debug/ppu ppu.cpp utils.cpp $(LDFLAGS)
-
-ppudebug: ppu.cpp ppu.h
-	clang++ -g -std=c++17 -o ./build/debug/ppu ppu.cpp utils.cpp $(LDFLAGS)
-
-test: ppu
-	./build/debug/ppu
 
 gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
-	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE)
+	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
+
+test: gb
+	./build/debug/gameboy tetris.gb
 
 debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
-	g++ -g -std=c++17 -o ./build/debug/gameboy $(SOURCE)
+	g++ -g -std=c++17 -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
 
 release: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/release
-	g++ -O3 -std=c++17 -o ./build/release/gameboy $(SOURCE)
+	g++ -O3 -std=c++17 -o ./build/release/gameboy $(SOURCE) $(LDFLAGS)
 
 validate01: debug
 	./build/debug/gameboy "../gb-test-roms/cpu_instrs/individual/01-special.gb" > /dev/null
