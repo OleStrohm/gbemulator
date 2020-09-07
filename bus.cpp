@@ -7,8 +7,10 @@ void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
 }
 
 uint8_t Bus::read(uint16_t addr) {
-  if (addr < 0x8000) {
+  if (addr < 0x4000) {
     return cartridge[addr];
+  } else if (addr < 0x8000) {
+    return cartridge[cartridgeBankAddress + addr - 0x4000];
   } else if (addr >= 0x8000 && addr < 0xA000) {
     return ppu->read(addr);
   } else if (addr >= 0xA000 && addr < 0xC000) {
@@ -28,7 +30,19 @@ uint8_t Bus::read(uint16_t addr) {
 
 void Bus::write(uint16_t addr, uint8_t value) {
   if (addr < 0x8000) {
-    fprintf(stderr, "Wrote to cartridge rom!");
+    if (cartridge[0x147] >= 1 && cartridge[0x147] <= 3) {
+      if (addr >= 0x6000 && addr < 0x8000) {
+        if (value & 1)
+          printf("Set MBC1 to 4/32\n");
+        else
+          printf("Set MBC1 to 16/8\n");
+      } else if (addr >= 0x2000 && addr < 0x4000) {
+        cartridgeBankAddress = std::max(0x4000 * (value & 0x1F), 0x4000);
+        printf("Set MBC1 Bank address to %02lX\n", cartridgeBankAddress);
+      } else
+        fprintf(stderr, "Wrote to cartridge rom!");
+    } else
+      fprintf(stderr, "Wrote to cartridge rom!");
   } else if (addr >= 0x8000 && addr < 0xA000) {
     ppu->write(addr, value);
   } else if (addr >= 0xA000 && addr < 0xC000) {

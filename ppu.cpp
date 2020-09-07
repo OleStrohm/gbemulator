@@ -141,7 +141,6 @@ void PPU::write(uint16_t addr, uint8_t value) {
     if (addr == 0xFF40)
       LCDC = value;
     if (addr == 0xFF42) {
-      printf("Set SCY to: %02X\n", value);
       SCY = value;
     }
     if (addr == 0xFF43)
@@ -308,16 +307,17 @@ void PPU::step() {
           uint8_t xx = x + SCX;
           uint8_t xt = xx / 8;
           int tile = read(bgTileMapDisplay + yt * 32 + xt);
-          int color =
-              getColorForTile(tileDataBase, tile, xx % 8, yy % 8) * 0xFF / 3;
+          int color = getColorForTile(tileDataBase, tile, xx % 8, yy % 8);
+		  uint32_t palette[] = {0x2c2c96, 0x7733e7, 0xe78686, 0xf7bef7};
+          color = palette[color];
 
           int ri = 3 * (WIDTH * LY + x);
           int gi = 3 * (WIDTH * LY + x) + 1;
           int bi = 3 * (WIDTH * LY + x) + 2;
 
-          pixels[ri] = color;
-          pixels[gi] = color;
-          pixels[bi] = color;
+          pixels[ri] = (color >> 16) & 0xFF;
+          pixels[gi] = (color >> 8) & 0xFF;
+          pixels[bi] = color & 0xFF;
         }
         mtx.unlock();
       }

@@ -194,8 +194,7 @@ uint8_t CPU::read(uint16_t addr) {
 
 void CPU::write(uint16_t addr, uint8_t value) {
   if (addr < 0x8000) {
-    breakpoint = true;
-    printf("ERROR: WRITING %02X TO ROM at %04X\n", value, addr);
+    bus->write(addr, value);
   } else if (addr >= 0x8000 && addr < 0xA000)
     bus->write(addr, value);
   else if (addr >= 0xA000 && addr < 0xC000)
@@ -209,6 +208,7 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr == 0xFF01) {
       fprintf(stderr, "%c", value);
+    } else if (addr == 0xFF02) {
     } else if (addr == 0xFF04) {
       DIV = 0;
     } else if (addr == 0xFF05) {
