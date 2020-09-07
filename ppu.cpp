@@ -1,6 +1,7 @@
 #include "ppu.h"
 #include "utils.h"
 #include <GLFW/glfw3.h>
+#include <chrono>
 #include <iostream>
 #include <iterator>
 #include <thread>
@@ -44,7 +45,7 @@ constexpr float vertices[] = {
     -1.0f, 1.0f,  0.0f, 0.0f, 0.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,
 };
 
-PPU::PPU() : vram(0x2000) {
+PPU::PPU() : vram(0x2000), hasSetUp(false), frame(0) {
   uint8_t firstPart[] = {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xfc, 0x00, 0xfc, 0x00,
@@ -220,9 +221,13 @@ void PPU::setup() {
   glViewport(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
 
   pixelData = (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+
+  hasSetUp = true;
 }
 
 void PPU::step() {
+  if (!hasSetUp)
+    return;
   bool isLCDOn = LCDC & (1 << 7);
 
   uint16_t windowTileMap = LCDC & (1 << 6) ? 0x9C00 : 0x9800;
@@ -237,9 +242,9 @@ void PPU::step() {
     } else if (LX < 63) {
     } else {
       if (LX == 63) {
-        printf("Render line %i\n", LY);
         uint8_t yy = LY + SCY;
         int yt = yy / 8;
+		mtx.lock();
         for (int x = 0; x < 20 * 8; x++) {
           uint8_t xx = x + SCX;
           uint8_t xt = xx / 8;
@@ -254,12 +259,12 @@ void PPU::step() {
           pixelData[gi] = color;
           pixelData[bi] = color;
         }
+		mtx.unlock();
       }
     }
   } else {
     if (LY == 144 && LX == 0) {
       invalidate();
-      printf("VBLANK\n");
     }
   }
 
@@ -268,22 +273,15 @@ void PPU::step() {
     LX = 0;
     LY++;
     if (LY >= 154) {
+      frame++;
+      // printf("Drew frame: %d\n", frame);
       LY = 0;
     }
   }
 }
 
-void PPU::renderScreen() {}
-
 void PPU::render() {
   bool keyDown = false;
-  bool changePixels = false;
-
-  SCX = 0;
-  SCY = 0;
-
-  renderScreen();
-  invalidate();
 
   while (!glfwWindowShouldClose(window)) {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -291,10 +289,12 @@ void PPU::render() {
     if (invalidated) {
       invalidated = false;
 
+      mtx.lock();
       glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
                    GL_UNSIGNED_BYTE, 0);
       pixelData = (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+	  mtx.unlock();
       if (!pixelData) {
         std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
         GLenum err = glGetError();
@@ -309,54 +309,6 @@ void PPU::render() {
 
     glfwSwapBuffers(window);
     glfwPollEvents();
-
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE &&
-        glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_RELEASE &&
-        glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_RELEASE &&
-        glfwGetKey(window, GLFW_KEY_UP) == GLFW_RELEASE &&
-        glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_RELEASE)
-      keyDown = false;
-    if (!keyDown && glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-      SCX--;
-      keyDown = true;
-    }
-    if (!keyDown && glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-      SCX++;
-      keyDown = true;
-    }
-    if (!keyDown && glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-      SCY++;
-      keyDown = true;
-    }
-    if (!keyDown && glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-      SCY -= 0x16;
-      keyDown = true;
-    }
-    if (!keyDown && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-      // int tile = 0x19;
-      // drawTile(0x1, 0, 0);
-      // drawTile(0x2, 8, 0);
-      // drawTile(0x0d, 0, 8);
-      // drawTile(0x0e, 8, 8);
-
-      // drawTile(0x1, 144, 128);
-      // drawTile(0x2, 152, 128);
-      // drawTile(0x0d, 144, 136);
-      // drawTile(0x0e, 152, 136);
-      // for (int y = 0; y < 18; y++) {
-      //  int yp = 8 * y + scy;
-      //  int yt = (yp / 8) % 256;
-      //  for (int x = 0; x < 20; x++) {
-      //    int xp = 8 * x + scx;
-      //    int xt = (xp / 8) % 256;
-      //    int tile = vram[0x1600 + yt * 32 + xt];
-      //    drawTile(tile, xp, yp);
-      //    printf("%02X ", tile);
-      //  }
-      //  printf("\n");
-      //}
-      keyDown = true;
-    }
   }
 }
 
@@ -374,22 +326,6 @@ void PPU::cleanup() {
   glfwTerminate();
 }
 
-void startInputLoop(PPU *ppu) {
-  while (!ppu->isClosed()) {
-    std::string input;
-    getline(std::cin, input);
-    if (ppu->isClosed())
-      return;
-    if (input == "r") {
-      ppu->invalidate();
-      std::cout << "Invalidated" << std::endl;
-    } else {
-      for (int i = 0; i < 114; i++)
-        ppu->step();
-    }
-  }
-}
-
 void startRenderLoop(PPU *ppu) {
   ppu->setup();
   ppu->render();
@@ -404,10 +340,44 @@ int main() {
 
   ppu.setLCDC(0x91);
 
+  using cycles = std::chrono::duration<double, std::ratio<4, 4'194'304>>;
+
+  auto lastTime = std::chrono::high_resolution_clock::now();
+  auto fpsCounter = std::chrono::high_resolution_clock::now();
+
+  int cyclesPS = 0;
+
   // std::thread inputThread(startInputLoop, &ppu);
   std::thread th(startRenderLoop, &ppu);
 
-  startInputLoop(&ppu);
+  while (!ppu.isClosed()) {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto cycleCount =
+        std::chrono::duration_cast<cycles>(now - lastTime).count();
+    auto fpsElapsed =
+        std::chrono::duration_cast<std::chrono::seconds>(now - fpsCounter)
+            .count();
+
+    while (cycleCount > 1.0) {
+      lastTime =
+          lastTime +
+          std::chrono::duration_cast<std::chrono::nanoseconds>(cycles(1.0));
+      cyclesPS++;
+      cycleCount -= 1.0;
+      ppu.step();
+    }
+
+    if (fpsElapsed > 1.0) {
+      fpsCounter += std::chrono::seconds(1);
+      printf("FPS: %d\n", ppu.getFrame());
+      printf("CYCLES: %d\n", cyclesPS);
+      ppu.setFrame(0);
+      cyclesPS = 0;
+    }
+
+    if (ppu.getLY() == 0 && ppu.getLX() == 0)
+      std::this_thread::sleep_for(std::chrono::milliseconds(16));
+  }
 
   th.join();
 

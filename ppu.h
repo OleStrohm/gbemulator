@@ -1,5 +1,6 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <mutex>
 #include <vector>
 
 constexpr int SCALE = 3;
@@ -28,12 +29,15 @@ private:
   unsigned int shaderProgram;
 
   bool hasClosed = false;
+  int frame;
+
+  bool hasSetUp;
+  std::mutex mtx;
 
 public:
   PPU();
 
   void step();
-  void renderScreen();
   int8_t getColorForTile(uint8_t index, uint8_t x, uint8_t y);
 
   void setup();
@@ -46,4 +50,11 @@ public:
 
   bool isClosed();
   void close();
+
+  void setFrame(int frame) { this->frame = frame; }
+  int getFrame() { return frame; }
+  void setLX(uint8_t LX) { this->LX = LX; }
+  uint8_t getLX() { return LX; }
+  void setLY(uint8_t LY) { this->LY = LY; }
+  uint8_t getLY() { return LY; }
 };
