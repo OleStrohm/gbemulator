@@ -35,7 +35,6 @@ public:
   void step();
   void renderScreen();
   int8_t getColorForTile(uint8_t index, uint8_t x, uint8_t y);
-  void drawTile(uint8_t tile, uint8_t x, uint8_t y);
 
   void setup();
   void render();

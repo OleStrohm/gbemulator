@@ -223,7 +223,6 @@ void PPU::setup() {
 }
 
 void PPU::step() {
-
   bool isLCDOn = LCDC & (1 << 7);
 
   uint16_t windowTileMap = LCDC & (1 << 6) ? 0x9C00 : 0x9800;
@@ -235,15 +234,33 @@ void PPU::step() {
 
   if (LY < 144) {
     if (LX < 20) {
-      printf("OAM SEARCH STUB");
     } else if (LX < 63) {
-      printf("Moving pixel data LX=%i LY=%i", LX, LY);
-
     } else {
-      printf("HBLANK");
+      if (LX == 63) {
+        printf("Render line %i\n", LY);
+        uint8_t yy = LY + SCY;
+        int yt = yy / 8;
+        for (int x = 0; x < 20 * 8; x++) {
+          uint8_t xx = x + SCX;
+          uint8_t xt = xx / 8;
+          int tile = vram[0x1800 + yt * 32 + xt];
+          int color = getColorForTile(tile, xx % 8, yy % 8) * 0xFF / 3;
+
+          int ri = 3 * (WIDTH * LY + x);
+          int gi = 3 * (WIDTH * LY + x) + 1;
+          int bi = 3 * (WIDTH * LY + x) + 2;
+
+          pixelData[ri] = color;
+          pixelData[gi] = color;
+          pixelData[bi] = color;
+        }
+      }
     }
   } else {
-    printf("VBLANK");
+    if (LY == 144 && LX == 0) {
+      invalidate();
+      printf("VBLANK\n");
+    }
   }
 
   LX++;
@@ -251,33 +268,12 @@ void PPU::step() {
     LX = 0;
     LY++;
     if (LY >= 154) {
-      invalidate();
       LY = 0;
     }
   }
 }
 
-void PPU::renderScreen() {
-  for (int y = 0; y < 18 * 8; y++) {
-    uint8_t yy = y + SCY;
-    int yt = yy / 8;
-    for (int x = 0; x < 20 * 8; x++) {
-      uint8_t xx = x + SCX;
-      uint8_t xt = xx / 8;
-      int tile = vram[0x1800 + yt * 32 + xt];
-      int color = getColorForTile(tile, xx % 8, yy % 8);
-      color = color * 0xFF / 3;
-
-      int r = 3 * (WIDTH * y + x);
-      int g = 3 * (WIDTH * y + x) + 1;
-      int b = 3 * (WIDTH * y + x) + 2;
-
-      pixelData[r] = color;
-      pixelData[g] = color;
-      pixelData[b] = color;
-    }
-  }
-}
+void PPU::renderScreen() {}
 
 void PPU::render() {
   bool keyDown = false;
@@ -322,26 +318,18 @@ void PPU::render() {
       keyDown = false;
     if (!keyDown && glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
       SCX--;
-      renderScreen();
-      invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
       SCX++;
-      renderScreen();
-      invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
       SCY++;
-      renderScreen();
-      invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
       SCY -= 0x16;
-      renderScreen();
-      invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
@@ -367,8 +355,6 @@ void PPU::render() {
       //  }
       //  printf("\n");
       //}
-      renderScreen();
-      invalidate();
       keyDown = true;
     }
   }
@@ -377,24 +363,6 @@ void PPU::render() {
 int8_t PPU::getColorForTile(uint8_t index, uint8_t x, uint8_t y) {
   return ((vram[0x10 * index + 2 * y] >> (7 - x)) & 0x1) |
          (((vram[0x10 * index + 2 * y + 1] >> (7 - x)) & 0x1) << 1);
-}
-
-void PPU::drawTile(uint8_t tile, uint8_t x, uint8_t y) {
-  for (int ty = 0; ty < 8; ty++) {
-    int yy = (y + ty) * WIDTH;
-    for (int tx = 0; tx < 8; tx++) {
-      int r = 3 * (yy + x + tx);
-      int g = 3 * (yy + x + tx) + 1;
-      int b = 3 * (yy + x + tx) + 2;
-      int color = getColorForTile(tile, tx, ty);
-
-      color = color * 0xFF / 3;
-
-      pixelData[r] = color;
-      pixelData[g] = color;
-      pixelData[b] = color;
-    }
-  }
 }
 
 void PPU::cleanup() {
@@ -416,7 +384,8 @@ void startInputLoop(PPU *ppu) {
       ppu->invalidate();
       std::cout << "Invalidated" << std::endl;
     } else {
-      ppu->step();
+      for (int i = 0; i < 114; i++)
+        ppu->step();
     }
   }
 }
