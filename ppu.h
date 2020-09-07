@@ -2,7 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 
-constexpr int SCALE = 5;
+constexpr int SCALE = 3;
 constexpr int WIDTH = 160;
 constexpr int HEIGHT = 144;
 constexpr int BYTES_PER_PIXEL = 3;

@@ -258,18 +258,19 @@ void PPU::step() {
 }
 
 void PPU::renderScreen() {
-  for (int y = 18 * 8 - 1; y >= 0; y--) {
-    uint8_t yy = SCY + y;
-    int yt = (yy % 256) / 8;
+  for (int y = 0; y < 18 * 8; y++) {
+    uint8_t yy = y + SCY;
+    int yt = yy / 8;
     for (int x = 0; x < 20 * 8; x++) {
       uint8_t xx = x + SCX;
-      int xt = (xx % 256) / 8;
-      int tile = vram[0x1600 + (31 - yt) * 32 + xt];
-      int color = getColorForTile(tile, x % 8, (18 * 8 - 1 - y) % 8) * 0xFF / 3;
+      uint8_t xt = xx / 8;
+      int tile = vram[0x1800 + yt * 32 + xt];
+      int color = getColorForTile(tile, xx % 8, yy % 8);
+      color = color * 0xFF / 3;
 
-      int r = 3 * (WIDTH * (18 * 8 - 1 - y) + x);
-      int g = 3 * (WIDTH * (18 * 8 - 1 - y) + x) + 1;
-      int b = 3 * (WIDTH * (18 * 8 - 1 - y) + x) + 2;
+      int r = 3 * (WIDTH * y + x);
+      int g = 3 * (WIDTH * y + x) + 1;
+      int b = 3 * (WIDTH * y + x) + 2;
 
       pixelData[r] = color;
       pixelData[g] = color;
@@ -283,7 +284,10 @@ void PPU::render() {
   bool changePixels = false;
 
   SCX = 0;
-  SCY = 255;
+  SCY = 0;
+
+  renderScreen();
+  invalidate();
 
   while (!glfwWindowShouldClose(window)) {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -318,25 +322,25 @@ void PPU::render() {
       keyDown = false;
     if (!keyDown && glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
       SCX--;
-	  renderScreen();
+      renderScreen();
       invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
       SCX++;
-	  renderScreen();
+      renderScreen();
       invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
       SCY++;
-	  renderScreen();
+      renderScreen();
       invalidate();
       keyDown = true;
     }
     if (!keyDown && glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-      SCY--;
-	  renderScreen();
+      SCY -= 0x16;
+      renderScreen();
       invalidate();
       keyDown = true;
     }
@@ -363,7 +367,7 @@ void PPU::render() {
       //  }
       //  printf("\n");
       //}
-	  renderScreen();
+      renderScreen();
       invalidate();
       keyDown = true;
     }
