@@ -6,6 +6,7 @@
 #include "utils.h"
 #include <chrono>
 #include <iostream>
+#include <ratio>
 #include <thread>
 
 constexpr uint8_t interruptVblank = 1 << 0;
@@ -22,11 +23,16 @@ constexpr uint16_t interruptInputAddress = 0x0060;
 constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
 
 constexpr bool logRegisters = false;
+constexpr bool showBootScreen = false;
 
 CPU::CPU(Bus *bus)
     : boot(0x100), ram(0x2000), zeropage(0xFFFE - 0xFF80), bus(bus) {
   registers.pc = 0; // TODO: reset to 0
   unlockedBootRom = false;
+  if (!showBootScreen) {
+    registers.pc = 0x100;
+    unlockedBootRom = true;
+  }
 
   clockCycle = 0;
   TAC = 0;
@@ -51,18 +57,16 @@ bool CPU::step() {
   if (clockCycle % 64) {
     DIV++;
   }
-  if (clockCycle % timerDividerLUT[TAC & 0x3] == 0 && TAC & 0x4 &&
-      ++TIMA == 0) {
-    IF |= interruptTimer;
-    TIMA = TMA;
+  if (clockCycle % timerDividerLUT[TAC & 0x3] == 0 && TAC & 0x4) {
+    TIMA++;
+    if (!TIMA) {
+      IF |= interruptTimer;
+      TIMA = TMA;
+    }
   }
   if (interruptChangeStateDelay >= 0) {
     if (interruptChangeStateDelay == 0) {
       interruptsEnabled = interruptsShouldBeEnabled;
-      if (interruptsEnabled)
-        printf("Enabled interrupts!\n");
-      else
-        printf("Disabled interrupts!\n");
     }
     interruptChangeStateDelay--;
   }
@@ -82,7 +86,6 @@ bool CPU::step() {
     if (interruptsEnabled && IF) {
       uint16_t interruptAddress = 0xFFFF;
       if (IE & interruptVblank && IF & interruptVblank) {
-        printf("Vblank interrupt!\n");
         interruptAddress = interruptVblankAddress;
         IF &= ~interruptVblank;
       } else if (IE & interruptLCDC && IF & interruptLCDC) {
@@ -100,7 +103,6 @@ bool CPU::step() {
       }
 
       if (interruptAddress != 0xFFFF) {
-		  printf("Interrupt!\n");
         setInterruptEnable(false);
         registers.sp--;
         write(registers.sp, registers.pc >> 8);
@@ -311,6 +313,8 @@ int main(int argc, char **argv) {
 
   using cycles = std::chrono::duration<double, std::ratio<4, 4'194'304>>;
 
+  auto syncTimer = std::chrono::high_resolution_clock::now();
+
   auto lastTime = std::chrono::high_resolution_clock::now();
   auto fpsCounter = std::chrono::high_resolution_clock::now();
 
@@ -345,8 +349,13 @@ int main(int argc, char **argv) {
     }
 
     if (ppu.getLY() == 0 && ppu.getLX() == 0) {
+      auto syncNow = std::chrono::high_resolution_clock::now();
+      auto syncTime = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          syncNow - syncTimer)
+                          .count();
+      // TODO: fix this
       std::this_thread::sleep_for(
-          std::chrono::milliseconds(16)); // TODO: fix this
+          std::chrono::nanoseconds((1'000'000'000 - syncTime) / 60));
     }
   }
 

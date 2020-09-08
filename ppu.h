@@ -25,6 +25,10 @@ class PPU {
   uint8_t LYC = 0;
   uint8_t LY = 0;
   uint8_t LX = 0;
+  uint8_t WY = 0;
+  uint8_t WLY = 0;
+  uint8_t WX = 0;
+  uint8_t windowEnabled = false;
   bool invalidated = false;
 
   std::vector<uint8_t> vram;

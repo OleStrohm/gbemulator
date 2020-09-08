@@ -6,12 +6,20 @@
 #include <cstring>
 #include <iostream>
 #include <iterator>
+#include <new>
 #include <thread>
 #include <vector>
 
 constexpr uint8_t interruptVblank = 1 << 0;
 constexpr uint8_t interruptLCDC = 1 << 1;
 constexpr uint8_t interruptInput = 1 << 4;
+
+struct Sprite {
+  uint8_t x;
+  uint8_t y;
+  uint8_t tile;
+  uint8_t attributes;
+};
 
 void error_callback(int error, const char *description) {
   fprintf(stderr, "ERROR(%i): %s\n", error, description);
@@ -53,7 +61,7 @@ constexpr float vertices[] = {
 
 PPU::PPU(Bus *bus)
     : bus(bus), vram(0x2000), oam(0xA0), hasSetUp(false), hasClosed(false),
-      frame(0), LY(0), LX(0), LYC(0), LCDC(0), BGP(0) {
+      frame(0), LY(0), LX(0), LYC(0), LCDC(0), BGP(0), WY(0), WX(0) {
   //  uint8_t firstPart[] = {
   //      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   //      0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xfc, 0x00,
@@ -145,41 +153,13 @@ void PPU::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     oam[addr - 0xFE00] = value;
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr == 0xFF40) {
+    if (addr == 0xFF40)
       LCDC = value;
-
-      bool showWindow = LCDC & (1 << 5);
-      if (showWindow)
-        fprintf(stderr, "Turned on window!\n");
-      else
-        fprintf(stderr, "Turned off window!\n");
-      uint16_t tileDataBase = LCDC & (1 << 4) ? 0x8000 : 0x9000;
-      if (tileDataBase != 0x8000)
-        fprintf(stderr, "Tried to use other tile data from 0x9000\n");
-      else
-        fprintf(stderr, "Using tile data from 0x8000\n");
-      uint16_t bgTileMapDisplay = LCDC & (1 << 3) ? 0x9C00 : 0x9800;
-      if (bgTileMapDisplay != 0x9800)
-        fprintf(stderr, "Tried to use other bg tile map at 0x9C00\n");
-      bool showSprites = LCDC & (1 << 1);
-      if (showSprites)
-        fprintf(stderr, "Turned on sprites!\n");
-      else
-        fprintf(stderr, "Turned off sprites!\n");
-      bool showBG = LCDC & 1;
-      if (showBG)
-        fprintf(stderr, "Turned on background!\n");
-      else
-        fprintf(stderr, "Turned off background!\n");
-    }
     if (addr == 0xFF41) {
-      printf("Wrote %02X to STAT\n", value);
       uint8_t writeMask = 0b11111000;
       value &= writeMask;
       STAT &= ~writeMask;
       STAT |= value;
-      printf("STAT is now %02X\n", STAT);
-      util::printfBits("STAT bits: ", STAT, 8);
     }
     if (addr == 0xFF42) {
       SCY = value;
@@ -191,9 +171,12 @@ void PPU::write(uint16_t addr, uint8_t value) {
     if (addr == 0xFF45)
       LYC = value;
     if (addr == 0xFF47) {
-      printf("Changed BGP to %02X\n", value);
       BGP = value;
     }
+    if (addr == 0xFF4A)
+      WY = value;
+    if (addr == 0xFF4B)
+      WX = value;
   } else
     fprintf(stderr, "PPU Written at bad address: %04X\n", addr);
 }
@@ -345,6 +328,7 @@ void PPU::step() {
   }
 
   uint16_t windowTileMap = LCDC & (1 << 6) ? 0x9C00 : 0x9800;
+  bool showWindow = LCDC & (1 << 5);
   uint16_t tileDataBase = LCDC & (1 << 4) ? 0x8000 : 0x9000;
   bool signedTileIndex = (LCDC & (1 << 4)) == 0;
   uint16_t bgTileMapDisplay = LCDC & (1 << 3) ? 0x9C00 : 0x9800;
@@ -354,6 +338,10 @@ void PPU::step() {
 
   int mode = 0b01;
   if (LY < 144) {
+    if (WY == LY) {
+      windowEnabled = true;
+    }
+
     if (LX < 20) {
       mode = 0b10;
     } else if (LX < 63) {
@@ -361,23 +349,99 @@ void PPU::step() {
     } else {
       mode = 0b00;
       if (LX == 63) {
+        showWindow = showWindow && windowEnabled;
+        if (WX > 166 || WY > 143)
+          showWindow = false;
+        bool renderedWindow = false;
         uint8_t yy = LY + SCY;
-        int yt = yy / 8;
+        uint8_t yt = yy / 8;
+        uint8_t numSpritesOnLine = 0;
+
+        std::array<Sprite, 40> sprites;
+        std::array<bool, 40> spritesUsed{false};
+        if (showSprites) {
+          // std::vector<Sprite> unsortedSprites;
+          // unsortedSprites.reserve(40);
+          for (int spIndex = 0; spIndex < 40; spIndex++) {
+            uint8_t y = oam[4 * spIndex];
+            uint8_t x = oam[4 * spIndex + 1];
+            uint8_t tile = oam[4 * spIndex + 2];
+            uint8_t attributes = oam[4 * spIndex + 3];
+            // printf("Sprite#%i: x: %02X, y: %02X, tile: %02X, attributes:
+            // %02X\n",
+            //        spIndex, x, y, tile, attributes);
+            sprites[spIndex] = {x, y, tile, attributes};
+          }
+        }
+
         mtx.lock();
         for (int x = 0; x < 20 * 8; x++) {
+          bool showWindowThisPixel = showWindow;
+          if (LY < WY || x < WX - 7)
+            showWindowThisPixel = false;
           uint8_t xx = x + SCX;
           uint8_t xt = xx / 8;
 
-          int tile = read(bgTileMapDisplay + yt * 32 + xt);
-          int bgcolor = getColorForTile(tileDataBase, signedTileIndex, tile,
-                                        xx % 8, yy % 8);
+          int bgtile = read(bgTileMapDisplay + yt * 32 + xt);
+          int color = getColorForTile(tileDataBase, signedTileIndex, bgtile,
+                                      xx % 8, yy % 8);
           if (!showBGAndWindow) {
-            bgcolor = 0;
+            color = 0;
           }
-          uint32_t palette[] = {0x2c2c96, 0x7733e7, 0xe78686, 0xf7bef7};
-          uint8_t paletteIndex = (BGP >> (2 * bgcolor)) & 0x3;
+          if (showWindowThisPixel) {
+            renderedWindow = true;
+            uint8_t yw = WLY;
+            uint8_t xw = x - WX + 7;
+            yt = yw / 8;
+            xt = xw / 8;
+            int wintile = read(windowTileMap + yt * 32 + xt);
+            color = getColorForTile(tileDataBase, signedTileIndex, wintile,
+                                    xw % 8, yw % 8);
+          }
+          if (showSprites) {
+            uint8_t spriteColor = 0;
+            bool bgPriority = false;
+            for (int spIndex = 0; spIndex < 40 && numSpritesOnLine < 10;
+                 spIndex++) {
+              Sprite &sprite = sprites[spIndex];
+              if (x >= sprite.x - 8 && x < sprite.x && LY >= sprite.y - 16 &&
+                  LY < sprite.y + spriteHeight - 16) {
+                uint8_t yt = (LY - (sprite.y - 16)) % 8;
+                uint8_t xt = x - (sprite.x - 8);
+                yt = sprite.attributes & 0x40 ? (7 - yt) : yt;
+                xt = sprite.attributes & 0x20 ? (7 - xt) : xt;
+                if (spriteHeight == 16) {
+                  uint8_t topSprite = sprite.attributes & 0x40
+                                          ? (sprite.tile | 0x1)
+                                          : (sprite.tile & 0xFE);
+                  if (LY >= sprite.y - 8) {
+                    spriteColor =
+                        getColorForTile(0x8000, false, topSprite ^ 0x1, xt, yt);
+                  } else {
+                    spriteColor =
+                        getColorForTile(0x8000, false, topSprite, xt, yt);
+                  }
+                } else {
+                  spriteColor =
+                      getColorForTile(0x8000, false, sprite.tile, xt, yt);
+                }
 
-          int color = palette[bgcolor];
+                if (!spritesUsed[spIndex]) {
+                  spritesUsed[spIndex] = true;
+                  numSpritesOnLine++;
+                }
+                bgPriority = sprite.attributes & 0x80;
+                break;
+              }
+            }
+            if (spriteColor != 0 && (!bgPriority || color == 0)) {
+              color = spriteColor;
+            }
+          }
+          uint32_t palette[] = {0xf7bef7, 0xe78686, 0x7733e7, 0x2c2c96};
+          uint8_t paletteIndex = (BGP >> (2 * color)) & 0x3;
+
+          color = palette[paletteIndex];
 
           int ri = 3 * (WIDTH * LY + x);
           int gi = 3 * (WIDTH * LY + x) + 1;
@@ -388,15 +452,20 @@ void PPU::step() {
           pixels[bi] = color & 0xFF;
         }
         mtx.unlock();
+
+        if (renderedWindow)
+          WLY++;
       }
     }
   } else {
     mode = 0b01;
     if (LY == 144 && LX == 0) {
+      WLY = 0;
       bus->raiseInterrupt(interruptVblank);
       frame++;
       invalidate();
     }
+    windowEnabled = false;
   }
 
   STAT &= 0xFC;
@@ -449,7 +518,7 @@ int8_t PPU::getColorForTile(uint16_t baseAddr, bool signedTileIndex,
   int16_t offset = (signedTileIndex ? (int8_t)index : (uint8_t)index);
   uint16_t addr = baseAddr + 0x10 * offset + 2 * y;
   return ((read(addr) >> (7 - x)) & 0x1) |
-         (((read(addr) >> (7 - x)) & 0x1) << 1);
+         (((read(addr + 1) >> (7 - x)) & 0x1) << 1);
 }
 
 void PPU::cleanup() {

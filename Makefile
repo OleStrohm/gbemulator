@@ -6,8 +6,9 @@ gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
 
 test: gb
-	./build/debug/gameboy tetris.gb
-	#./build/debug/gameboy ../dmg-acid2.gb
+	#./build/debug/gameboy tetris.gb
+	./build/debug/gameboy ../dmg-acid2.gb
+	#./build/debug/gameboy ../mooneye-gb/acceptance/timer/tim00.gb
 
 debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
