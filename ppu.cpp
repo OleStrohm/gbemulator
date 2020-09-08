@@ -149,8 +149,10 @@ void PPU::write(uint16_t addr, uint8_t value) {
       LY = 0;
     if (addr == 0xFF45)
       LYC = value;
-    if (addr == 0xFF47)
+    if (addr == 0xFF47) {
+      printf("Changed BGP to %02X\n", value);
       BGP = value;
+    }
   } else
     fprintf(stderr, "PPU Written at bad address: %04X", addr);
 }
@@ -308,8 +310,9 @@ void PPU::step() {
           uint8_t xt = xx / 8;
           int tile = read(bgTileMapDisplay + yt * 32 + xt);
           int color = getColorForTile(tileDataBase, tile, xx % 8, yy % 8);
-		  uint32_t palette[] = {0x2c2c96, 0x7733e7, 0xe78686, 0xf7bef7};
-          color = palette[color];
+          uint32_t palette[] = {0x2c2c96, 0x7733e7, 0xe78686, 0xf7bef7};
+		  uint8_t paletteIndex = BGP >> (2 * color) & 0x3;
+          color = palette[paletteIndex];
 
           int ri = 3 * (WIDTH * LY + x);
           int gi = 3 * (WIDTH * LY + x) + 1;
