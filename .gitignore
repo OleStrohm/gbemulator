@@ -5,6 +5,3 @@ log.txt
 # coc-clangd settings
 .clangd
 compile_commands.json
-
-# Tetris rom
-tetris.gb

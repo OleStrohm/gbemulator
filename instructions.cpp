@@ -19,9 +19,9 @@ std::unique_ptr<Instruction> Halt::decode(uint8_t opcode) {
 }
 
 bool Halt::execute(CPU *cpu) {
-	cpu->setHalted();
+  cpu->setHalted();
 
-	return true;
+  return true;
 }
 
 std::string Halt::getName() { return "Halt"; }
@@ -104,16 +104,16 @@ std::unique_ptr<Instruction> SetClearCarryFlag::decode(uint8_t opcode) {
 }
 
 bool SetClearCarryFlag::execute(CPU *cpu) {
-	uint8_t &flags = cpu->getRegisters().f;
-	flags &= 0b10011111;
+  uint8_t &flags = cpu->getRegisters().f;
+  flags &= 0b10011111;
   if (shouldSet) {
     flags |= 1 << 4;
   } else {
-	  if (flags & (1 << 4)) {
-		flags &= 0b10001111;
-	  } else {
-		  flags |= 1<< 4;
-	  }
+    if (flags & (1 << 4)) {
+      flags &= 0b10001111;
+    } else {
+      flags |= 1 << 4;
+    }
   }
 
   return true;
@@ -267,6 +267,9 @@ bool Ret::execute(CPU *cpu) {
   }
 
   cpu->getRegisters().pc = address;
+
+  if (enableInterrupts)
+    cpu->setInterruptEnable(true);
 
   return true;
 }
@@ -733,9 +736,9 @@ bool ExtendedInstruction::execute(CPU *cpu) {
     LOG("SWAP\n");
     result = (result << 4) | (result >> 4);
 
-	flags &= 0b00001111;
-	if (result == 0)
-		flags |= 1 << 7;
+    flags &= 0b00001111;
+    if (result == 0)
+      flags |= 1 << 7;
 
     if (registerMapping[instruction & 0x7] != nullptr) {
       *registerMapping[instruction & 0x7] = result;
@@ -828,7 +831,6 @@ bool RST::execute(CPU *cpu) {
     return false;
   }
   case 0: {
-    printf("RST %02X", n);
     cpu->getRegisters().pc = n;
   }
   }

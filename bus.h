@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "ppu.h"
+class CPU;
+class PPU;
 
 class Bus {
   std::vector<uint8_t> cartridge;
@@ -13,11 +14,15 @@ class Bus {
   uint64_t ramBankAddress = 0x0000;
 
   PPU *ppu;
+  CPU *cpu;
 
 public:
-  Bus(PPU *ppu);
+  void connectCPU(CPU *cpu);
+  void connectPPU(PPU *ppu);
 
   void loadCartridge(std::vector<uint8_t> boot);
+
+  void raiseInterrupt(int interrupt);
 
   uint8_t read(uint16_t addr);
   void write(uint16_t addr, uint8_t value);

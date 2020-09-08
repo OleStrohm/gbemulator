@@ -1,7 +1,7 @@
 #pragma once
 
-#include "register.h"
 #include "bus.h"
+#include "register.h"
 
 #include <cstdio>
 #include <memory>
@@ -14,7 +14,7 @@ class CPU {
   std::vector<uint8_t> ram;
   std::vector<uint8_t> zeropage;
 
-  Bus* bus;
+  Bus *bus;
 
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
@@ -29,7 +29,7 @@ class CPU {
 
   bool interruptsEnabled = false;
   bool interruptsShouldBeEnabled = false;
-  uint8_t interruptChangeStateDelay = -1;
+  int8_t interruptChangeStateDelay = -1;
 
   bool halted = false;
   bool hasRecoveredFromHalt = true;
@@ -39,7 +39,7 @@ class CPU {
   bool breakpoint = false;
 
 public:
-  CPU(Bus* bus);
+  CPU(Bus *bus);
 
   bool step();
 
@@ -54,6 +54,8 @@ public:
   }
   bool hasHalted() { return halted; }
   RegisterBank &getRegisters() { return registers; }
+
+  void raiseInterrupt(int interrupt);
 
   uint8_t read(uint16_t addr);
   void write(uint16_t addr, uint8_t value);

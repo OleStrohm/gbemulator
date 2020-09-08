@@ -1,10 +1,16 @@
 #include "bus.h"
 
-Bus::Bus(PPU *ppu) : ppu(ppu) {}
+#include "gb.h"
+#include "ppu.h"
+
+void Bus::connectCPU(CPU *cpu) { this->cpu = cpu; }
+void Bus::connectPPU(PPU *ppu) { this->ppu = ppu; }
 
 void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
   this->cartridge = cartridge;
 }
+
+void Bus::raiseInterrupt(int interrupt) { cpu->raiseInterrupt(interrupt); }
 
 uint8_t Bus::read(uint16_t addr) {
   if (addr < 0x4000) {

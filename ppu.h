@@ -5,13 +5,18 @@
 #include <mutex>
 #include <vector>
 
+#include "bus.h"
+
 constexpr int SCALE = 3;
 constexpr int WIDTH = 160;
 constexpr int HEIGHT = 144;
 constexpr int BYTES_PER_PIXEL = 3;
 
 class PPU {
+  Bus *bus;
+
   uint8_t LCDC;
+  uint8_t STAT;
 
   uint8_t BGP = 0;
 
@@ -41,10 +46,11 @@ private:
   std::mutex mtx;
 
 public:
-  PPU();
+  PPU(Bus *bus);
 
   void step();
-  int8_t getColorForTile(uint16_t baseAddr, uint8_t index, uint8_t x, uint8_t y);
+  int8_t getColorForTile(uint16_t baseAddr, bool signedTileIndex, uint8_t index,
+                         uint8_t x, uint8_t y);
 
   void setup();
   void render();

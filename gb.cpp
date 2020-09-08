@@ -25,7 +25,9 @@ constexpr bool logRegisters = false;
 
 CPU::CPU(Bus *bus)
     : boot(0x100), ram(0x2000), zeropage(0xFFFE - 0xFF80), bus(bus) {
-  registers.pc = 0;
+  registers.pc = 0; // TODO: reset to 0
+  unlockedBootRom = false;
+
   clockCycle = 0;
   TAC = 0;
   IF = 0;
@@ -57,6 +59,10 @@ bool CPU::step() {
   if (interruptChangeStateDelay >= 0) {
     if (interruptChangeStateDelay == 0) {
       interruptsEnabled = interruptsShouldBeEnabled;
+      if (interruptsEnabled)
+        printf("Enabled interrupts!\n");
+      else
+        printf("Disabled interrupts!\n");
     }
     interruptChangeStateDelay--;
   }
@@ -73,10 +79,10 @@ bool CPU::step() {
   if (!instr) {
     // if (registers.pc >= 0x100)
     //  std::this_thread::sleep_for(std::chrono::seconds(100));
-
     if (interruptsEnabled && IF) {
       uint16_t interruptAddress = 0xFFFF;
       if (IE & interruptVblank && IF & interruptVblank) {
+        printf("Vblank interrupt!\n");
         interruptAddress = interruptVblankAddress;
         IF &= ~interruptVblank;
       } else if (IE & interruptLCDC && IF & interruptLCDC) {
@@ -94,6 +100,7 @@ bool CPU::step() {
       }
 
       if (interruptAddress != 0xFFFF) {
+		  printf("Interrupt!\n");
         setInterruptEnable(false);
         registers.sp--;
         write(registers.sp, registers.pc >> 8);
@@ -148,6 +155,8 @@ bool CPU::step() {
   return !breakpoint;
 }
 
+void CPU::raiseInterrupt(int interrupt) { IF |= interrupt; }
+
 uint8_t CPU::read(uint16_t addr) {
   if (addr < 0x8000) {
     if (!unlockedBootRom && addr < 0x100)
@@ -165,6 +174,10 @@ uint8_t CPU::read(uint16_t addr) {
   if (addr >= 0xFE00 && addr < 0xFEA0)
     return bus->read(addr);
   if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF00) {
+      printf("Read input\n");
+      return 0xFF;
+    }
     if (addr == 0xFF04)
       return DIV;
     if (addr == 0xFF05)
@@ -206,7 +219,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFE00 && addr < 0xFEA0)
     bus->write(addr, value);
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr == 0xFF01) {
+    if (addr == 0xFF00) {
+      printf("Wrote to P1\n");
+    } else if (addr == 0xFF01) {
       fprintf(stderr, "%c", value);
     } else if (addr == 0xFF02) {
     } else if (addr == 0xFF04) {
@@ -229,7 +244,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
     zeropage[addr - 0xFF80] = value;
   } else if (addr == 0xFFFF) {
+    printf("Wrote %02X to IE\n", value);
     IE = value;
+    util::printfBits("IE bits: ", IE, 8);
   } else {
     breakpoint = true;
     printf("ERROR: WRITE MEMORY OUT OF BOUNDS at %04X\n", addr);
@@ -280,9 +297,11 @@ void startRenderLoop(PPU *ppu) {
 }
 
 int main(int argc, char **argv) {
-  PPU ppu;
-  Bus bus(&ppu);
+  Bus bus;
   CPU cpu(&bus);
+  PPU ppu(&bus);
+  bus.connectCPU(&cpu);
+  bus.connectPPU(&ppu);
 
   if (argc == 2) {
     bus.loadCartridge(util::readFile(argv[1]));
