@@ -68,11 +68,33 @@ void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
     break;
   }
   }
+  this->ram.resize(0x2000);
 }
 
 void Bus::raiseInterrupt(int interrupt) { cpu->raiseInterrupt(interrupt); }
 
+void Bus::syncronize() {
+  if (inDMATransfer) {
+    uint16_t OAMAddress = 0xFE00 + (DMAAddress & 0xFF);
+    uint8_t value = read_internal(DMAAddress);
+    ppu->write(0xFE00 + (DMAAddress & 0xFF), read_internal(DMAAddress));
+    printf("DMA: Wrote %02X from %04X to %04X\n", value, DMAAddress,
+           OAMAddress);
+
+    DMAAddress++;
+    if ((DMAAddress & 0xFF) >= 0xA0)
+      inDMATransfer = false;
+  }
+}
+
 uint8_t Bus::read(uint16_t addr) {
+  if (inDMATransfer)
+    return read_internal(0xFE00 + (DMAAddress & 0xFF));
+
+  return read_internal(addr);
+}
+
+uint8_t Bus::read_internal(uint16_t addr) {
   if (addr < 0x4000) {
     return cartridge[addr];
   } else if (addr < 0x8000) {
@@ -86,7 +108,7 @@ uint8_t Bus::read(uint16_t addr) {
   } else if (addr >= 0xD000 && addr < 0xE000) {
     return ramBank[addr - 0xC000];
   } else if (addr >= 0xE000 && addr < 0xFE00) {
-    return ram[addr - 0xE000];
+    return ramBank[addr - 0xE000];
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     return ppu->read(addr);
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
@@ -99,6 +121,13 @@ uint8_t Bus::read(uint16_t addr) {
 }
 
 void Bus::write(uint16_t addr, uint8_t value) {
+  if (inDMATransfer)
+    write_internal(0xFE00 + (DMAAddress & 0xFF), value);
+  else
+    write_internal(addr, value);
+}
+
+void Bus::write_internal(uint16_t addr, uint8_t value) {
   if (addr < 0x8000) {
     if (cartridge[0x147] >= 1 && cartridge[0x147] <= 3) {
       if (addr >= 0x6000 && addr < 0x8000) {
@@ -121,11 +150,14 @@ void Bus::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xD000 && addr < 0xE000) {
     ramBank[addr - 0xC000] = value;
   } else if (addr >= 0xE000 && addr < 0xFE00) {
-    ram[addr - 0xE000] = value;
+    ramBank[addr - 0xE000] = value;
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     ppu->write(addr, value);
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr >= 0xFF40 && addr <= 0xFF4B)
+    if (addr == 0xFF46) {
+      inDMATransfer = true;
+      DMAAddress = value << 8;
+    } else if (addr >= 0xFF40 && addr <= 0xFF4B)
       ppu->write(addr, value);
     else
       fprintf(stderr, "WRITE TO UNCONNECTED IO at %04X\n", addr);

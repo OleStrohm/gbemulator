@@ -414,11 +414,11 @@ void PPU::step() {
             color = getColorForTile(tileDataBase, signedTileIndex, wintile,
                                     xw % 8, yw % 8);
           }
-		  uint8_t palette = BGP;
+          uint8_t palette = BGP;
           if (showSprites) {
             uint8_t spriteColor = 0;
             bool bgPriority = false;
-			uint8_t spritePalette = 0;
+            uint8_t spritePalette = 0;
             for (Sprite &sprite : sprites) {
               if (x >= sprite.x - 8 && x < sprite.x) {
                 uint8_t yt = (LY - (sprite.y - 16)) % 8;
@@ -441,14 +441,16 @@ void PPU::step() {
                       getColorForTile(0x8000, false, sprite.tile, xt, yt);
                 }
 
-				spritePalette = sprite.attributes & 0x10 ? OBP1 : OBP0;
-                bgPriority = sprite.attributes & 0x80;
-                break;
+                if (spriteColor != 0) {
+                  spritePalette = sprite.attributes & 0x10 ? OBP1 : OBP0;
+                  bgPriority = sprite.attributes & 0x80;
+                  break;
+                }
               }
             }
             if (spriteColor != 0 && (!bgPriority || color == 0)) {
               color = spriteColor;
-			  palette = spritePalette;
+              palette = spritePalette;
             }
           }
           uint32_t paletteColors[] = {0xf7bef7, 0xe78686, 0x7733e7, 0x2c2c96};

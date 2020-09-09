@@ -20,7 +20,7 @@ constexpr uint16_t interruptSerialCompleteAddress = 0x0058;
 constexpr uint8_t interruptInput = 1 << 4;
 constexpr uint16_t interruptInputAddress = 0x0060;
 
-constexpr uint32_t timerLUT[] = {9, 3, 5, 7}; // In m cycles
+constexpr uint32_t timerLUT[] = {7, 1, 3, 5}; // In m cycles
 
 constexpr bool logRegisters = false;
 constexpr bool skipBootScreen = false;
@@ -53,17 +53,20 @@ CPU::CPU(Bus *bus)
 }
 
 bool CPU::step() {
-  bool wasHigh = clockCycle & (1 << timerLUT[TAC & 0x3]);
-  clockCycle += 4;
-  bool isLow = !(clockCycle & (1 << timerLUT[TAC & 0x3]));
-  if (TAC & 0x4 && wasHigh && isLow) {
+  clockCycle += 1;
+  bool currentANDresult =
+      ((clockCycle >> timerLUT[TAC & 0x3]) & 0x1) && ((TAC >> 2) & 0x1);
+  // printf("Clock&timerLUT: %i, TAC: %02X, TAC&0x4: %i, currentANDresult: %i,
+  // previousANDresult: %i\n", ((clockCycle >> timerLUT[TAC & 0x3]) & 0x1), TAC,
+  // ((TAC >> 2) & 0x1), currentANDresult, previousANDresult);
+  if (previousANDresult && !currentANDresult) {
     TIMA++;
-    printf("Inc TIMA to %02X (TMA: %02X)\n", TIMA, TMA);
-    if (!TIMA) {
-      IF |= interruptTimer;
-      TIMA = TMA;
+    // printf("Inc TIMA to %02X (TMA: %02X)\n", TIMA, TMA);
+    if (TIMA == 0x0) {
+      timerHasOverflowed = true;
     }
   }
+  previousANDresult = currentANDresult;
   if (interruptChangeStateDelay >= 0) {
     if (interruptChangeStateDelay == 0) {
       interruptsEnabled = interruptsShouldBeEnabled;
@@ -78,6 +81,8 @@ bool CPU::step() {
     if (!interruptsEnabled)
       hasRecoveredFromHalt = false;
   }
+
+  bus->syncronize();
 
   uint8_t opcode = read(registers.pc);
   if (!instr) {
@@ -149,6 +154,12 @@ bool CPU::step() {
       registers.pc--;
   }
 
+  if (timerHasOverflowed) {
+    IF |= interruptTimer;
+    TIMA = TMA;
+    timerHasOverflowed = false;
+  }
+
   hasRecoveredFromHalt = true;
 
   // if (registers.pc == 0xC5FA)
@@ -181,7 +192,7 @@ uint8_t CPU::read(uint16_t addr) {
       return 0xFF;
     }
     if (addr == 0xFF04)
-      return clockCycle >> 8;
+      return clockCycle >> 6;
     if (addr == 0xFF05)
       return TIMA;
     if (addr == 0xFF06)
@@ -230,6 +241,7 @@ void CPU::write(uint16_t addr, uint8_t value) {
       clockCycle = 0;
     } else if (addr == 0xFF05) {
       TIMA = value;
+      timerHasOverflowed = false;
       printf("Wrote %02X to TIMA\n", value);
     } else if (addr == 0xFF06) {
       TMA = value;

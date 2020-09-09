@@ -17,6 +17,12 @@ class Bus {
   PPU *ppu;
   CPU *cpu;
 
+  uint16_t DMAAddress = 0;
+  bool inDMATransfer = false;
+
+  uint8_t read_internal(uint16_t addr);
+  void write_internal(uint16_t addr, uint8_t value);
+
 public:
   void connectCPU(CPU *cpu);
   void connectPPU(PPU *ppu);
@@ -25,6 +31,7 @@ public:
 
   void raiseInterrupt(int interrupt);
 
+  void syncronize();
   uint8_t read(uint16_t addr);
   void write(uint16_t addr, uint8_t value);
 };

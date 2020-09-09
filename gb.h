@@ -18,8 +18,10 @@ class CPU {
 
   RegisterBank registers;
   std::unique_ptr<Instruction> instr;
-  uint64_t clockCycle;
+  uint16_t clockCycle;
 
+  bool previousANDresult = 0;
+  bool timerHasOverflowed = false;
   uint16_t DIV;
   uint8_t TIMA;
   uint8_t TMA;
