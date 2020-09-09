@@ -8,7 +8,7 @@ void Bus::connectPPU(PPU *ppu) { this->ppu = ppu; }
 
 void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
   this->cartridge = cartridge;
-  this->ram0.resize(0x1000);
+  this->ramBank.resize(0x2000);
   switch (cartridge[0x0147]) {
   case 0: {
     printf("Rom only\n");
@@ -81,8 +81,10 @@ uint8_t Bus::read(uint16_t addr) {
     return ppu->read(addr);
   } else if (addr >= 0xA000 && addr < 0xC000) {
     return ram[addr - 0xA000];
-  } else if (addr >= 0xC000 && addr < 0xE000) {
-    return ram0[addr - 0xC000];
+  } else if (addr >= 0xC000 && addr < 0xD000) {
+    return ramBank[addr - 0xC000];
+  } else if (addr >= 0xD000 && addr < 0xE000) {
+    return ramBank[addr - 0xC000];
   } else if (addr >= 0xE000 && addr < 0xFE00) {
     return ram[addr - 0xE000];
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
@@ -114,8 +116,10 @@ void Bus::write(uint16_t addr, uint8_t value) {
     ppu->write(addr, value);
   } else if (addr >= 0xA000 && addr < 0xC000) {
     ram[addr - 0xA000] = value;
-  } else if (addr >= 0xC000 && addr < 0xE000) {
-    ram0[addr - 0xC000] = value;
+  } else if (addr >= 0xC000 && addr < 0xD000) {
+    ramBank[addr - 0xC000] = value;
+  } else if (addr >= 0xD000 && addr < 0xE000) {
+    ramBank[addr - 0xC000] = value;
   } else if (addr >= 0xE000 && addr < 0xFE00) {
     ram[addr - 0xE000] = value;
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
