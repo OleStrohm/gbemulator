@@ -9,6 +9,7 @@ class PPU;
 class Bus {
   std::vector<uint8_t> cartridge;
   std::vector<uint8_t> ram;
+  std::vector<uint8_t> ram0;
 
   uint64_t cartridgeBankAddress = 0x4000;
   uint64_t ramBankAddress = 0x0000;

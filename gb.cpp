@@ -170,9 +170,9 @@ uint8_t CPU::read(uint16_t addr) {
   if (addr >= 0xA000 && addr < 0xC000)
     return bus->read(addr);
   if (addr >= 0xC000 && addr < 0xE000)
-    return ram[addr - 0xC000];
+    return bus->read(addr);
   if (addr >= 0xE000 && addr < 0xFE00)
-    return ram[addr - 0xE000];
+    return bus->read(addr);
   if (addr >= 0xFE00 && addr < 0xFEA0)
     return bus->read(addr);
   if (addr >= 0xFF00 && addr < 0xFF4C) {
@@ -215,9 +215,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xA000 && addr < 0xC000)
     bus->write(addr, value);
   else if (addr >= 0xC000 && addr < 0xE000)
-    ram[addr - 0xC000] = value;
+    bus->write(addr, value);
   else if (addr >= 0xE000 && addr < 0xFE00)
-    ram[addr - 0xE000] = value;
+    bus->write(addr, value);
   else if (addr >= 0xFE00 && addr < 0xFEA0)
     bus->write(addr, value);
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
@@ -239,10 +239,8 @@ void CPU::write(uint16_t addr, uint8_t value) {
       printf("Wrote %02X to TAC\n", TAC);
     } else if (addr == 0xFF0F) {
       IF = value;
-    } else if (addr >= 0xFF40 && addr <= 0xFF4B) {
-      bus->write(addr, value);
     } else {
-      fprintf(stderr, "WRITE TO UNCONNECTED IO at %04X\n", addr);
+      bus->write(addr, value);
     }
   } else if (addr == 0xFF50 && value == 0x01) {
     unlockedBootRom = true;

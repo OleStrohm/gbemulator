@@ -8,15 +8,66 @@ void Bus::connectPPU(PPU *ppu) { this->ppu = ppu; }
 
 void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
   this->cartridge = cartridge;
-  if (cartridge[0x0149] == 0)
-	  this->ram.resize(0);
-  else 
-  if (cartridge[0x0149] == 1)
-	  this->ram.resize(0x800);
-  if (cartridge[0x0149] == 2)
-	  this->ram.resize(0x2000);
-  if (cartridge[0x0149] == 3)
-	  this->ram.resize(0x4000);
+  this->ram0.resize(0x1000);
+  switch (cartridge[0x0147]) {
+  case 0: {
+    printf("Rom only\n");
+    break;
+  }
+  case 0x1: {
+    printf("MBC1\n");
+    break;
+  }
+  case 0x2: {
+    printf("MBC1+RAM\n");
+    break;
+  }
+  case 0x3: {
+    printf("MBC1+RAM+BATTERY\n");
+    break;
+  }
+  case 0x5: {
+    printf("MBC2\n");
+    break;
+  }
+  case 0x6: {
+    printf("MBC2+BATTERY\n");
+    break;
+  }
+  case 0x7: {
+    printf("ROM+RAM\n");
+    break;
+  }
+  default: {
+    printf("Unknown\n");
+    break;
+  }
+  }
+  switch (cartridge[0x0149]) {
+  case 0: {
+    this->ram.resize(0);
+    break;
+  }
+  case 1: {
+    printf("Ram size: 0x800\n");
+    this->ram.resize(0x800);
+    break;
+  }
+  case 2: {
+    printf("Ram size: 0x2000\n");
+    this->ram.resize(0x2000);
+    break;
+  }
+  case 3: {
+    printf("Ram size: 0x4000\n");
+    this->ram.resize(0x4000);
+    break;
+  }
+  default: {
+    printf("Ram size: Unsupported\n");
+    break;
+  }
+  }
 }
 
 void Bus::raiseInterrupt(int interrupt) { cpu->raiseInterrupt(interrupt); }
@@ -30,6 +81,8 @@ uint8_t Bus::read(uint16_t addr) {
     return ppu->read(addr);
   } else if (addr >= 0xA000 && addr < 0xC000) {
     return ram[addr - 0xA000];
+  } else if (addr >= 0xC000 && addr < 0xE000) {
+    return ram0[addr - 0xC000];
   } else if (addr >= 0xE000 && addr < 0xFE00) {
     return ram[addr - 0xE000];
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
@@ -54,13 +107,15 @@ void Bus::write(uint16_t addr, uint8_t value) {
       } else if (addr >= 0x2000 && addr < 0x4000) {
         cartridgeBankAddress = std::max(0x4000 * (value & 0x1F), 0x4000);
       } else
-        fprintf(stderr, "Wrote to cartridge rom!");
+        fprintf(stderr, "Wrote %02X to cartridge rom %04X!\n", value, addr);
     } else
-      fprintf(stderr, "Wrote to cartridge rom!");
+      fprintf(stderr, "Wrote %02X to cartridge rom %04X!\n", value, addr);
   } else if (addr >= 0x8000 && addr < 0xA000) {
     ppu->write(addr, value);
   } else if (addr >= 0xA000 && addr < 0xC000) {
     ram[addr - 0xA000] = value;
+  } else if (addr >= 0xC000 && addr < 0xE000) {
+    ram0[addr - 0xC000] = value;
   } else if (addr >= 0xE000 && addr < 0xFE00) {
     ram[addr - 0xE000] = value;
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
@@ -68,6 +123,8 @@ void Bus::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr >= 0xFF40 && addr <= 0xFF4B)
       ppu->write(addr, value);
+    else
+      fprintf(stderr, "WRITE TO UNCONNECTED IO at %04X\n", addr);
   } else
     fprintf(stderr, "Bus written to at bad address: %04X\n", addr);
 }
