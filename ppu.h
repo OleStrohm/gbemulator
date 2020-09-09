@@ -77,6 +77,8 @@ public:
 
   void invalidate();
 
+  void raiseInterrupt(uint8_t interrupt);
+
   uint8_t read(uint16_t addr);
   void write(uint16_t addr, uint8_t value);
 

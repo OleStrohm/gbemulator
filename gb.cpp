@@ -201,7 +201,7 @@ uint8_t CPU::read(uint16_t addr) {
       return bus->read(addr);
     }
 
-	return bus->read(addr);
+    return bus->read(addr);
   }
   if (addr >= 0xFF80 && addr <= 0xFFFE)
     return zeropage[addr - 0xFF80];
@@ -228,7 +228,8 @@ void CPU::write(uint16_t addr, uint8_t value) {
     bus->write(addr, value);
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
     if (addr == 0xFF01) {
-      fprintf(stderr, "%c", value);
+      // serial
+      // fprintf(stderr, "%c", value);
     } else if (addr == 0xFF02) {
     } else if (addr == 0xFF04) {
       clockCycle = 0;
@@ -252,9 +253,9 @@ void CPU::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
     zeropage[addr - 0xFF80] = value;
   } else if (addr == 0xFFFF) {
-    printf("Wrote %02X to IE\n", value);
+    // printf("Wrote %02X to IE\n", value);
+    // util::printfBits("IE bits: ", value, 8);
     IE = value;
-    util::printfBits("IE bits: ", IE, 8);
   } else {
     breakpoint = true;
     printf("ERROR: WRITE MEMORY OUT OF BOUNDS at %04X\n", addr);

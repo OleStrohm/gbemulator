@@ -33,22 +33,41 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
   PPU *instance = (PPU *)glfwGetWindowUserPointer(window);
 
   bool set = action == GLFW_PRESS || action == GLFW_REPEAT;
-  if (key == GLFW_KEY_DOWN)
+  bool changed = false;
+  if (key == GLFW_KEY_DOWN) {
+    changed = instance->joypadDown ^ set;
     instance->joypadDown = set;
-  if (key == GLFW_KEY_UP)
+  }
+  if (key == GLFW_KEY_UP) {
+    changed = instance->joypadUp ^ set;
     instance->joypadUp = set;
-  if (key == GLFW_KEY_LEFT)
+  }
+  if (key == GLFW_KEY_LEFT) {
+    changed = instance->joypadLeft ^ set;
     instance->joypadLeft = set;
-  if (key == GLFW_KEY_RIGHT)
+  }
+  if (key == GLFW_KEY_RIGHT) {
+    changed = instance->joypadRight ^ set;
     instance->joypadRight = set;
-  if (key == GLFW_KEY_ESCAPE)
+  }
+  if (key == GLFW_KEY_ESCAPE) {
+    changed = instance->joypadStart ^ set;
     instance->joypadStart = set;
-  if (key == GLFW_KEY_BACKSPACE)
+  }
+  if (key == GLFW_KEY_BACKSPACE) {
+    changed = instance->joypadSelect ^ set;
     instance->joypadSelect = set;
-  if (key == GLFW_KEY_X)
+  }
+  if (key == GLFW_KEY_X) {
+    changed = instance->joypadA ^ set;
     instance->joypadA = set;
-  if (key == GLFW_KEY_Z)
+  }
+  if (key == GLFW_KEY_Z) {
+    changed = instance->joypadB ^ set;
     instance->joypadB = set;
+  }
+  if (changed)
+    instance->raiseInterrupt(interruptInput);
 }
 
 std::string vertexShaderSource = R"EOF(
@@ -89,6 +108,8 @@ PPU::PPU(Bus *bus)
     : bus(bus), vram(0x2000), oam(0xA0), hasSetUp(false), hasClosed(false),
       frame(0), LY(0), LX(0), LYC(0), LCDC(0), BGP(0), WY(0), WX(0) {}
 
+void PPU::raiseInterrupt(uint8_t interrupt) { bus->raiseInterrupt(interrupt); }
+
 uint8_t PPU::read(uint16_t addr) {
   if (addr >= 0x8000 && addr < 0xA000) {
     return vram[addr - 0x8000];
@@ -117,6 +138,7 @@ uint8_t PPU::read(uint16_t addr) {
         if (joypadRight)
           value &= ~0b1;
       }
+	  // printf("Input read: %02X\n", value);
       return value;
     }
     if (addr == 0xFF40)
