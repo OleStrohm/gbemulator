@@ -1,6 +1,7 @@
 # build files
 build
 log.txt
+boot.bin
 
 # coc-clangd settings
 .clangd
