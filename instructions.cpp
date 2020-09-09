@@ -569,7 +569,8 @@ int IncDec::getType() {
 }
 
 ExtendedInstruction::ExtendedInstruction()
-    : instruction(0), address(0), gotAddress(0), result(0), shouldWrite(false) {
+    : instruction(0), valueAtHL(0), gotValueAtHL(false), result(0),
+      shouldWrite(false) {
   finished = false;
 }
 
@@ -597,19 +598,18 @@ bool ExtendedInstruction::execute(CPU *cpu) {
                                 nullptr,
                                 &cpu->getRegisters().a};
 
-  if ((instruction & 0x7) == 0b110 && !gotAddress) {
-    address = cpu->getRegisters().hl;
-    gotAddress = true;
+  if ((instruction & 0x7) == 0b110 && !gotValueAtHL) {
+    valueAtHL = cpu->read(cpu->getRegisters().hl);
+    gotValueAtHL = true;
     return false;
   }
 
   if (shouldWrite) {
-    cpu->write(address, result);
+    cpu->write(cpu->getRegisters().hl, result);
     return true;
   }
 
-  result =
-      gotAddress ? cpu->read(address) : *registerMapping[instruction & 0x7];
+  result = gotValueAtHL ? valueAtHL : *registerMapping[instruction & 0x7];
   uint8_t &flags = cpu->getRegisters().f;
   if (instruction >> 4 == 0b0000) { // RdC D
     bool isLeft = ((instruction >> 3) & 1) == 0;

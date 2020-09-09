@@ -229,8 +229,8 @@ public:
 
 class ExtendedInstruction : public Instruction {
   uint8_t instruction;
-  uint16_t address;
-  bool gotAddress;
+  uint16_t valueAtHL;
+  bool gotValueAtHL;
   uint8_t result;
   bool shouldWrite;
 

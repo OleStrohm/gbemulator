@@ -20,14 +20,14 @@ constexpr uint16_t interruptSerialCompleteAddress = 0x0058;
 constexpr uint8_t interruptInput = 1 << 4;
 constexpr uint16_t interruptInputAddress = 0x0060;
 
-constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
+constexpr uint32_t timerLUT[] = {9, 3, 5, 7}; // In m cycles
 
 constexpr bool logRegisters = false;
 constexpr bool skipBootScreen = false;
 
 CPU::CPU(Bus *bus)
     : boot(0x100), ram(0x2000), zeropage(0xFFFE - 0xFF80), bus(bus) {
-  registers.pc = 0; // TODO: reset to 0
+  registers.pc = 0;
   unlockedBootRom = false;
   if (skipBootScreen) {
     registers.pc = 0x100;
@@ -36,6 +36,8 @@ CPU::CPU(Bus *bus)
 
   clockCycle = 0;
   TAC = 0;
+  TIMA = 0;
+  TMA = 0;
   IF = 0;
   if (logRegisters) {
     registers.a = 0;
@@ -50,15 +52,13 @@ CPU::CPU(Bus *bus)
   }
 }
 
-int count = 0;
-
 bool CPU::step() {
-  clockCycle++;
-  if (clockCycle % 64) {
-    DIV++;
-  }
-  if (clockCycle % timerDividerLUT[TAC & 0x3] == 0 && TAC & 0x4) {
+  bool wasHigh = clockCycle & (1 << timerLUT[TAC & 0x3]);
+  clockCycle += 4;
+  bool isLow = !(clockCycle & (1 << timerLUT[TAC & 0x3]));
+  if (TAC & 0x4 && wasHigh && isLow) {
     TIMA++;
+    printf("Inc TIMA to %02X (TMA: %02X)\n", TIMA, TMA);
     if (!TIMA) {
       IF |= interruptTimer;
       TIMA = TMA;
@@ -117,11 +117,11 @@ bool CPU::step() {
     }
     if (logRegisters) {
       printf("A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X "
-             "SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
+             "SP: %04X PC: 00:%04X (%02X %02X %02X %02X) TIMA: %02X\n",
              registers.a, registers.f, registers.b, registers.c, registers.d,
              registers.e, registers.h, registers.l, registers.sp, registers.pc,
              read(registers.pc), read(registers.pc + 1), read(registers.pc + 2),
-             read(registers.pc + 3));
+             read(registers.pc + 3), TIMA);
     }
 
     instr = instruction::decode(opcode);
@@ -181,7 +181,7 @@ uint8_t CPU::read(uint16_t addr) {
       return 0xFF;
     }
     if (addr == 0xFF04)
-      return DIV;
+      return clockCycle >> 8;
     if (addr == 0xFF05)
       return TIMA;
     if (addr == 0xFF06)
@@ -227,13 +227,16 @@ void CPU::write(uint16_t addr, uint8_t value) {
       fprintf(stderr, "%c", value);
     } else if (addr == 0xFF02) {
     } else if (addr == 0xFF04) {
-      DIV = 0;
+      clockCycle = 0;
     } else if (addr == 0xFF05) {
       TIMA = value;
+      printf("Wrote %02X to TIMA\n", value);
     } else if (addr == 0xFF06) {
       TMA = value;
+      printf("Wrote %02X to TMA\n", TMA);
     } else if (addr == 0xFF07) {
       TAC = value;
+      printf("Wrote %02X to TAC\n", TAC);
     } else if (addr == 0xFF0F) {
       IF = value;
     } else if (addr >= 0xFF40 && addr <= 0xFF4B) {
@@ -307,7 +310,7 @@ int main(int argc, char **argv) {
 
   if (argc == 2) {
     bus.loadCartridge(util::readFile(argv[1]));
-	printf("Loaded Cartride!\n");
+    printf("Loaded Cartride!\n");
   }
   cpu.loadBoot(util::readFile("boot.bin"));
   // cpu.dumpBoot();
