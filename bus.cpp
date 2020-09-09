@@ -78,8 +78,8 @@ void Bus::syncronize() {
     uint16_t OAMAddress = 0xFE00 + (DMAAddress & 0xFF);
     uint8_t value = read_internal(DMAAddress);
     ppu->write(0xFE00 + (DMAAddress & 0xFF), read_internal(DMAAddress));
-    printf("DMA: Wrote %02X from %04X to %04X\n", value, DMAAddress,
-           OAMAddress);
+    // printf("DMA: Wrote %02X from %04X to %04X\n", value, DMAAddress,
+    //        OAMAddress);
 
     DMAAddress++;
     if ((DMAAddress & 0xFF) >= 0xA0)
@@ -112,8 +112,15 @@ uint8_t Bus::read_internal(uint16_t addr) {
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     return ppu->read(addr);
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF00)
+      return ppu->read(addr);
+    if (addr >= 0xFF10 && addr <= 0xFF3F)
+      return 0xFF; // sound
     if (addr >= 0xFF40 && addr <= 0xFF4B)
       return ppu->read(addr);
+
+    fprintf(stderr, "READ TO UNCONNECTED IO at %04X\n", addr);
+    return 0xFF;
   }
 
   fprintf(stderr, "Bus read at bad address: %04X\n", addr);
@@ -129,14 +136,16 @@ void Bus::write(uint16_t addr, uint8_t value) {
 
 void Bus::write_internal(uint16_t addr, uint8_t value) {
   if (addr < 0x8000) {
+    if (addr < 0x2000)
+      return;
     if (cartridge[0x147] >= 1 && cartridge[0x147] <= 3) {
-      if (addr >= 0x6000 && addr < 0x8000) {
+      if (addr >= 0x2000 && addr < 0x4000) {
+        cartridgeBankAddress = std::max(0x4000 * (value & 0x1F), 0x4000);
+      } else if (addr >= 0x6000 && addr < 0x8000) {
         if (value & 1)
           printf("Set MBC1 to 4/32\n");
         else
           printf("Set MBC1 to 16/8\n");
-      } else if (addr >= 0x2000 && addr < 0x4000) {
-        cartridgeBankAddress = std::max(0x4000 * (value & 0x1F), 0x4000);
       } else
         fprintf(stderr, "Wrote %02X to cartridge rom %04X!\n", value, addr);
     } else
@@ -154,7 +163,11 @@ void Bus::write_internal(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     ppu->write(addr, value);
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr == 0xFF46) {
+    if (addr == 0xFF00) {
+      ppu->write(addr, value);
+    } else if (addr >= 0xFF10 && addr <= 0xFF3F) {
+      return; // sound
+    } else if (addr == 0xFF46) {
       inDMATransfer = true;
       DMAAddress = value << 8;
     } else if (addr >= 0xFF40 && addr <= 0xFF4B)

@@ -187,10 +187,6 @@ uint8_t CPU::read(uint16_t addr) {
   if (addr >= 0xFE00 && addr < 0xFEA0)
     return bus->read(addr);
   if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr == 0xFF00) {
-      printf("Read input\n");
-      return 0xFF;
-    }
     if (addr == 0xFF04)
       return clockCycle >> 6;
     if (addr == 0xFF05)
@@ -205,8 +201,7 @@ uint8_t CPU::read(uint16_t addr) {
       return bus->read(addr);
     }
 
-    fprintf(stderr, "READ TO UNCONNECTED IO at %04X\n", addr);
-    return 0xFF;
+	return bus->read(addr);
   }
   if (addr >= 0xFF80 && addr <= 0xFFFE)
     return zeropage[addr - 0xFF80];
@@ -232,9 +227,7 @@ void CPU::write(uint16_t addr, uint8_t value) {
   else if (addr >= 0xFE00 && addr < 0xFEA0)
     bus->write(addr, value);
   else if (addr >= 0xFF00 && addr < 0xFF4C) {
-    if (addr == 0xFF00) {
-      printf("Wrote to P1\n");
-    } else if (addr == 0xFF01) {
+    if (addr == 0xFF01) {
       fprintf(stderr, "%c", value);
     } else if (addr == 0xFF02) {
     } else if (addr == 0xFF04) {
@@ -242,13 +235,13 @@ void CPU::write(uint16_t addr, uint8_t value) {
     } else if (addr == 0xFF05) {
       TIMA = value;
       timerHasOverflowed = false;
-      printf("Wrote %02X to TIMA\n", value);
+      // printf("Wrote %02X to TIMA\n", value);
     } else if (addr == 0xFF06) {
       TMA = value;
-      printf("Wrote %02X to TMA\n", TMA);
+      // printf("Wrote %02X to TMA\n", TMA);
     } else if (addr == 0xFF07) {
       TAC = value;
-      printf("Wrote %02X to TAC\n", TAC);
+      // printf("Wrote %02X to TAC\n", TAC);
     } else if (addr == 0xFF0F) {
       IF = value;
     } else {

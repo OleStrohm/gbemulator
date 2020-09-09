@@ -13,7 +13,20 @@ constexpr int HEIGHT = 144;
 constexpr int BYTES_PER_PIXEL = 3;
 
 class PPU {
+public:
+  bool joypadDown = false;
+  bool joypadUp = false;
+  bool joypadLeft = false;
+  bool joypadRight = false;
+  bool joypadStart = false;
+  bool joypadSelect = false;
+  bool joypadA = false;
+  bool joypadB = false;
+
+private:
   Bus *bus;
+  
+  uint8_t inputMask = 0;
 
   uint8_t LCDC;
   uint8_t STAT;

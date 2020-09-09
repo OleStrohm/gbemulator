@@ -7,8 +7,8 @@ gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 
 test: gb
 	# ./build/debug/gameboy ../tetris.gb
-	# ./build/debug/gameboy ../zelda.gb
-	./build/debug/gameboy ../gb-test-roms/mem_timing/individual/01-read_timing.gb
+	./build/debug/gameboy ../zelda.gb
+	# ./build/debug/gameboy ../gb-test-roms/mem_timing/individual/01-read_timing.gb
 
 debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug

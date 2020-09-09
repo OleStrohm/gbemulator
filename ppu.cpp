@@ -28,6 +28,29 @@ void error_callback(int error, const char *description) {
   fprintf(stderr, "ERROR(%i): %s\n", error, description);
 }
 
+void key_callback(GLFWwindow *window, int key, int scancode, int action,
+                  int mods) {
+  PPU *instance = (PPU *)glfwGetWindowUserPointer(window);
+
+  bool set = action == GLFW_PRESS || action == GLFW_REPEAT;
+  if (key == GLFW_KEY_DOWN)
+    instance->joypadDown = set;
+  if (key == GLFW_KEY_UP)
+    instance->joypadUp = set;
+  if (key == GLFW_KEY_LEFT)
+    instance->joypadLeft = set;
+  if (key == GLFW_KEY_RIGHT)
+    instance->joypadRight = set;
+  if (key == GLFW_KEY_ESCAPE)
+    instance->joypadStart = set;
+  if (key == GLFW_KEY_BACKSPACE)
+    instance->joypadSelect = set;
+  if (key == GLFW_KEY_X)
+    instance->joypadA = set;
+  if (key == GLFW_KEY_Z)
+    instance->joypadB = set;
+}
+
 std::string vertexShaderSource = R"EOF(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -130,6 +153,30 @@ uint8_t PPU::read(uint16_t addr) {
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     return oam[addr - 0xFE00];
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF00) {
+      uint8_t value = inputMask | 0b1111;
+      if (!(inputMask & 0b00100000)) {
+        if (joypadStart) 
+          value &= ~0b1000;
+        if (joypadSelect)
+          value &= ~0b100;
+        if (joypadB)
+          value &= ~0b10;
+        if (joypadA)
+          value &= ~0b1;
+      }
+      if (!(inputMask & 0b00010000)) {
+        if (joypadDown)
+          value &= ~0b1000;
+        if (joypadUp)
+          value &= ~0b100;
+        if (joypadLeft)
+          value &= ~0b10;
+        if (joypadRight)
+          value &= ~0b1;
+      }
+	  return value;
+    }
     if (addr == 0xFF40)
       return LCDC;
     if (addr == 0xFF41)
@@ -156,6 +203,12 @@ void PPU::write(uint16_t addr, uint8_t value) {
   } else if (addr >= 0xFE00 && addr < 0xFEA0) {
     oam[addr - 0xFE00] = value;
   } else if (addr >= 0xFF00 && addr < 0xFF4C) {
+    if (addr == 0xFF00) {
+      uint8_t writeMask = 0b00110000;
+      value &= writeMask;
+	  inputMask &= ~writeMask;
+      inputMask |= value;
+    }
     if (addr == 0xFF40)
       LCDC = value;
     if (addr == 0xFF41) {
@@ -307,6 +360,9 @@ void PPU::setup() {
 
   textureData = (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
   pixels = new uint8_t[WIDTH * HEIGHT * BYTES_PER_PIXEL];
+
+  glfwSetWindowUserPointer(window, this);
+  glfwSetKeyCallback(window, key_callback);
 
   printf("Finished setup\n");
   hasSetUp = true;
