@@ -19,6 +19,8 @@ class PPU {
   uint8_t STAT;
 
   uint8_t BGP = 0;
+  uint8_t OBP0 = 0;
+  uint8_t OBP1 = 0;
 
   uint8_t SCY = 0;
   uint8_t SCX = 0;

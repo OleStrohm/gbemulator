@@ -23,13 +23,13 @@ constexpr uint16_t interruptInputAddress = 0x0060;
 constexpr uint32_t timerDividerLUT[] = {256, 4, 16, 64}; // In m cycles
 
 constexpr bool logRegisters = false;
-constexpr bool showBootScreen = false;
+constexpr bool skipBootScreen = false;
 
 CPU::CPU(Bus *bus)
     : boot(0x100), ram(0x2000), zeropage(0xFFFE - 0xFF80), bus(bus) {
   registers.pc = 0; // TODO: reset to 0
   unlockedBootRom = false;
-  if (!showBootScreen) {
+  if (skipBootScreen) {
     registers.pc = 0x100;
     unlockedBootRom = true;
   }
@@ -307,6 +307,7 @@ int main(int argc, char **argv) {
 
   if (argc == 2) {
     bus.loadCartridge(util::readFile(argv[1]));
+	printf("Loaded Cartride!\n");
   }
   cpu.loadBoot(util::readFile("boot.bin"));
   // cpu.dumpBoot();

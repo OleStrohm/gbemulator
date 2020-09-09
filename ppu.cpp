@@ -19,6 +19,9 @@ struct Sprite {
   uint8_t y;
   uint8_t tile;
   uint8_t attributes;
+
+  Sprite(uint8_t x, uint8_t y, uint8_t tile, uint8_t attributes)
+      : x(x), y(y), tile(tile), attributes(attributes) {}
 };
 
 void error_callback(int error, const char *description) {
@@ -161,18 +164,20 @@ void PPU::write(uint16_t addr, uint8_t value) {
       STAT &= ~writeMask;
       STAT |= value;
     }
-    if (addr == 0xFF42) {
+    if (addr == 0xFF42)
       SCY = value;
-    }
     if (addr == 0xFF43)
       SCX = value;
     if (addr == 0xFF44)
       LY = 0;
     if (addr == 0xFF45)
       LYC = value;
-    if (addr == 0xFF47) {
+    if (addr == 0xFF47)
       BGP = value;
-    }
+    if (addr == 0xFF48)
+      OBP0 = value;
+    if (addr == 0xFF49)
+      OBP1 = value;
     if (addr == 0xFF4A)
       WY = value;
     if (addr == 0xFF4B)
@@ -355,22 +360,33 @@ void PPU::step() {
         bool renderedWindow = false;
         uint8_t yy = LY + SCY;
         uint8_t yt = yy / 8;
-        uint8_t numSpritesOnLine = 0;
 
-        std::array<Sprite, 40> sprites;
-        std::array<bool, 40> spritesUsed{false};
+        std::vector<Sprite> sprites;
         if (showSprites) {
-          // std::vector<Sprite> unsortedSprites;
-          // unsortedSprites.reserve(40);
+          sprites.reserve(10);
+          std::vector<Sprite> unsortedSprites;
+          unsortedSprites.reserve(40);
           for (int spIndex = 0; spIndex < 40; spIndex++) {
             uint8_t y = oam[4 * spIndex];
+            if (LY < y - 16 || LY >= y + spriteHeight - 16)
+              continue;
+
             uint8_t x = oam[4 * spIndex + 1];
             uint8_t tile = oam[4 * spIndex + 2];
             uint8_t attributes = oam[4 * spIndex + 3];
-            // printf("Sprite#%i: x: %02X, y: %02X, tile: %02X, attributes:
-            // %02X\n",
-            //        spIndex, x, y, tile, attributes);
-            sprites[spIndex] = {x, y, tile, attributes};
+            unsortedSprites.emplace_back(x, y, tile, attributes);
+          }
+          while (unsortedSprites.size() > 0 && sprites.size() < 10) {
+            uint8_t leftmostIndex = 0;
+            uint8_t leftmostX = 168;
+            for (int i = 0; i < unsortedSprites.size(); i++) {
+              if (unsortedSprites[i].x < leftmostX) {
+                leftmostX = unsortedSprites[i].x;
+                leftmostIndex = i;
+              }
+            }
+            sprites.push_back(unsortedSprites[leftmostIndex]);
+            unsortedSprites.erase(unsortedSprites.begin() + leftmostIndex);
           }
         }
 
@@ -398,14 +414,13 @@ void PPU::step() {
             color = getColorForTile(tileDataBase, signedTileIndex, wintile,
                                     xw % 8, yw % 8);
           }
+		  uint8_t palette = BGP;
           if (showSprites) {
             uint8_t spriteColor = 0;
             bool bgPriority = false;
-            for (int spIndex = 0; spIndex < 40 && numSpritesOnLine < 10;
-                 spIndex++) {
-              Sprite &sprite = sprites[spIndex];
-              if (x >= sprite.x - 8 && x < sprite.x && LY >= sprite.y - 16 &&
-                  LY < sprite.y + spriteHeight - 16) {
+			uint8_t spritePalette = 0;
+            for (Sprite &sprite : sprites) {
+              if (x >= sprite.x - 8 && x < sprite.x) {
                 uint8_t yt = (LY - (sprite.y - 16)) % 8;
                 uint8_t xt = x - (sprite.x - 8);
                 yt = sprite.attributes & 0x40 ? (7 - yt) : yt;
@@ -426,22 +441,20 @@ void PPU::step() {
                       getColorForTile(0x8000, false, sprite.tile, xt, yt);
                 }
 
-                if (!spritesUsed[spIndex]) {
-                  spritesUsed[spIndex] = true;
-                  numSpritesOnLine++;
-                }
+				spritePalette = sprite.attributes & 0x10 ? OBP1 : OBP0;
                 bgPriority = sprite.attributes & 0x80;
                 break;
               }
             }
             if (spriteColor != 0 && (!bgPriority || color == 0)) {
               color = spriteColor;
+			  palette = spritePalette;
             }
           }
-          uint32_t palette[] = {0xf7bef7, 0xe78686, 0x7733e7, 0x2c2c96};
-          uint8_t paletteIndex = (BGP >> (2 * color)) & 0x3;
+          uint32_t paletteColors[] = {0xf7bef7, 0xe78686, 0x7733e7, 0x2c2c96};
+          uint8_t paletteIndex = (palette >> (2 * color)) & 0x3;
 
-          color = palette[paletteIndex];
+          color = paletteColors[paletteIndex];
 
           int ri = 3 * (WIDTH * LY + x);
           int gi = 3 * (WIDTH * LY + x) + 1;

@@ -8,6 +8,15 @@ void Bus::connectPPU(PPU *ppu) { this->ppu = ppu; }
 
 void Bus::loadCartridge(std::vector<uint8_t> cartridge) {
   this->cartridge = cartridge;
+  if (cartridge[0x0149] == 0)
+	  this->ram.resize(0);
+  else 
+  if (cartridge[0x0149] == 1)
+	  this->ram.resize(0x800);
+  if (cartridge[0x0149] == 2)
+	  this->ram.resize(0x2000);
+  if (cartridge[0x0149] == 3)
+	  this->ram.resize(0x4000);
 }
 
 void Bus::raiseInterrupt(int interrupt) { cpu->raiseInterrupt(interrupt); }
@@ -44,7 +53,6 @@ void Bus::write(uint16_t addr, uint8_t value) {
           printf("Set MBC1 to 16/8\n");
       } else if (addr >= 0x2000 && addr < 0x4000) {
         cartridgeBankAddress = std::max(0x4000 * (value & 0x1F), 0x4000);
-        printf("Set MBC1 Bank address to %02lX\n", cartridgeBankAddress);
       } else
         fprintf(stderr, "Wrote to cartridge rom!");
     } else
