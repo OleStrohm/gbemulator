@@ -1156,21 +1156,6 @@ bool Load::execute(CPU *cpu) {
         LOG("READ %02X from %04X\n", cpu->getRegisters().a, address);
       }
     }
-  } else if (destination == 0xFF) {
-    if (!loadedAddress) {
-      address = immediate;
-      loadedAddress = true;
-      return false;
-    }
-
-    if (address == immediate) {
-      cpu->write(address, immediate & 0xFF);
-      LOG("Wrote %02X to %04X\n", cpu->getRegisters().sp & 0xFF, address);
-      address += 1;
-      return false;
-    }
-    cpu->write(address, (immediate >> 8) & 0xFF);
-    LOG("Wrote %02X to %04X\n", (cpu->getRegisters().sp >> 8) & 0xFF, address);
   } else if (operation != 0xFF) {
     if (loadedAddress) {
       if ((operation & 1) == 0b0) {
@@ -1198,6 +1183,21 @@ bool Load::execute(CPU *cpu) {
       }
       return false;
     }
+  } else if (destination == 0xFF) {
+    if (!loadedAddress) {
+      address = immediate;
+      loadedAddress = true;
+      return false;
+    }
+
+    if (address == immediate) {
+      cpu->write(address, immediate & 0xFF);
+      LOG("Wrote %02X to %04X\n", cpu->getRegisters().sp & 0xFF, address);
+      address += 1;
+      return false;
+    }
+    cpu->write(address, (immediate >> 8) & 0xFF);
+    LOG("Wrote %02X to %04X\n", (cpu->getRegisters().sp >> 8) & 0xFF, address);
   } else if (source == 0xFF) {
     if (is16Bit) {
       if (destination == 0b00) {
