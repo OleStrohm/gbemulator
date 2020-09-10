@@ -32,37 +32,39 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
                   int mods) {
   PPU *instance = (PPU *)glfwGetWindowUserPointer(window);
 
+  printf("K: %i, S: %i, Minus: %i", key, scancode, glfwGetKeyScancode(GLFW_KEY_MINUS));
+
   bool set = action == GLFW_PRESS || action == GLFW_REPEAT;
   bool changed = false;
-  if (key == GLFW_KEY_DOWN) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_DOWN)) {
     changed = instance->joypadDown ^ set;
     instance->joypadDown = set;
   }
-  if (key == GLFW_KEY_UP) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_UP)) {
     changed = instance->joypadUp ^ set;
     instance->joypadUp = set;
   }
-  if (key == GLFW_KEY_LEFT) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_LEFT)) {
     changed = instance->joypadLeft ^ set;
     instance->joypadLeft = set;
   }
-  if (key == GLFW_KEY_RIGHT) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_RIGHT)) {
     changed = instance->joypadRight ^ set;
     instance->joypadRight = set;
   }
-  if (key == GLFW_KEY_ESCAPE) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_ESCAPE)) {
     changed = instance->joypadStart ^ set;
     instance->joypadStart = set;
   }
-  if (key == GLFW_KEY_BACKSPACE) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_BACKSPACE)) {
     changed = instance->joypadSelect ^ set;
     instance->joypadSelect = set;
   }
-  if (key == GLFW_KEY_X) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_X)) {
     changed = instance->joypadA ^ set;
     instance->joypadA = set;
   }
-  if (key == GLFW_KEY_Z) {
+  if (scancode == glfwGetKeyScancode(GLFW_KEY_Z)) {
     changed = instance->joypadB ^ set;
     instance->joypadB = set;
   }
