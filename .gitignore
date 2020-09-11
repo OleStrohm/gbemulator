@@ -2,6 +2,7 @@
 build
 log.txt
 boot.bin
+imgui.ini
 
 # coc-clangd settings
 .clangd
