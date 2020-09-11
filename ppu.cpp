@@ -1,6 +1,11 @@
+#define IMGUI_IMPL_OPENGL_LOADER_GLEW
 #include "ppu.h"
 #include "utils.h"
-#include <GLFW/glfw3.h>
+
+#include <imgui/imgui.h>
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_opengl3.h"
+
 #include <bits/stdint-uintn.h>
 #include <chrono>
 #include <cstring>
@@ -32,7 +37,8 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
                   int mods) {
   PPU *instance = (PPU *)glfwGetWindowUserPointer(window);
 
-  printf("K: %i, S: %i, Minus: %i", key, scancode, glfwGetKeyScancode(GLFW_KEY_MINUS));
+  // printf("K: %i, S: %i, Minus: %i", key, scancode,
+  //        glfwGetKeyScancode(GLFW_KEY_MINUS));
 
   bool set = action == GLFW_PRESS || action == GLFW_REPEAT;
   bool changed = false;
@@ -140,7 +146,7 @@ uint8_t PPU::read(uint16_t addr) {
         if (joypadRight)
           value &= ~0b1;
       }
-	  // printf("Input read: %02X\n", value);
+      // printf("Input read: %02X\n", value);
       return value;
     }
     if (addr == 0xFF40)
@@ -320,8 +326,6 @@ void PPU::setup() {
   glBufferData(GL_PIXEL_UNPACK_BUFFER, WIDTH * HEIGHT * BYTES_PER_PIXEL, 0,
                GL_STATIC_DRAW);
 
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
   glViewport(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
 
   textureData = (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
@@ -330,11 +334,21 @@ void PPU::setup() {
   glfwSetWindowUserPointer(window, this);
   glfwSetKeyCallback(window, key_callback);
 
+  glfwSwapInterval(1);
+
   printf("Finished setup\n");
   hasSetUp = true;
 }
 
 void PPU::step() {
+  internalLX++;
+  if (internalLX == 4) {
+    internalLX = 0;
+    internalLY++;
+    if (internalLY == 4)
+      internalLX = internalLY = 0;
+  }
+
   if (!hasSetUp)
     return;
   bool isLCDOn = LCDC & (1 << 7);
@@ -519,35 +533,73 @@ void PPU::step() {
 }
 
 void PPU::render() {
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO &io = ImGui::GetIO();
+  io.Fonts->AddFontDefault();
+
+  // ImGui::StyleColorsDark();
+
+  ImGui_ImplGlfw_InitForOpenGL(window, true);
+  ImGui_ImplOpenGL3_Init("#version 130");
+
+  bool showDemoWindow = true;
+
   while (!glfwWindowShouldClose(window)) {
-    glClear(GL_COLOR_BUFFER_BIT);
+    glfwPollEvents();
 
-    if (invalidated) {
-      invalidated = false;
+    //if (invalidated) {
+    //  invalidated = false;
 
-      mtx.lock(); // TODO: go back to editing textureData directly
-      memcpy(textureData, pixels, HEIGHT * WIDTH * BYTES_PER_PIXEL);
-      mtx.unlock();
-      glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
-                   GL_UNSIGNED_BYTE, 0);
-      textureData =
-          (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-      if (!textureData) {
-        std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
-        GLenum err = glGetError();
-        std::cerr << "OpenGL Error: " << err << std::endl;
-      }
+    //  mtx.lock(); // TODO: go back to editing textureData directly
+    //  memcpy(textureData, pixels, HEIGHT * WIDTH * BYTES_PER_PIXEL);
+    //  mtx.unlock();
+    //  glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    //  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
+    //               GL_UNSIGNED_BYTE, 0);
+    //  textureData =
+    //      (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+    //  if (!textureData) {
+    //    std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
+    //    GLenum err = glGetError();
+    //    std::cerr << "OpenGL Error: " << err << std::endl;
+    //  }
+    //}
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::ShowDemoWindow(&showDemoWindow);
+
+    {
+      ImGui::Begin("Hello World!");
+
+      ImGui::Text("Useful text!");
+      ImGui::Checkbox("Demo Window", &showDemoWindow);
+
+      ImGui::End();
     }
 
-    glUseProgram(shaderProgram);
-    glBindTexture(GL_TEXTURE_2D, screenTexture);
-    glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    ImGui::Render();
+    int display_w, display_h;
+    glfwGetFramebufferSize(window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // glUseProgram(shaderProgram);
+    // glBindTexture(GL_TEXTURE_2D, screenTexture);
+    // glBindVertexArray(vao);
+    // glDrawArrays(GL_TRIANGLES, 0, 6);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     glfwSwapBuffers(window);
-    glfwPollEvents();
   }
+
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
 }
 
 int8_t PPU::getColorForTile(uint16_t baseAddr, bool signedTileIndex,

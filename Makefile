@@ -1,9 +1,15 @@
-SOURCE = gb.cpp ppu.cpp bus.cpp instructions.cpp utils.cpp
+GBSOURCE = gb.cpp ppu.cpp bus.cpp instructions.cpp utils.cpp
+IMGUISOURCE = deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_widgets.cpp deps/imgui/imgui_demo.cpp imgui/imgui_impl_glfw.cpp imgui/imgui_impl_opengl3.cpp
+CPPFLAGS = -std=c++17 -Ideps
 LDFLAGS = `pkg-config --static --libs glfw3` -lGLEW -lGL
+
+SOURCE = $(GBSOURCE) $(IMGUISOURCE)
+
+all: gb
 
 gb: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
-	g++ -std=c++17 -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
+	g++ $(CPPFLAGS) -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
 
 test: gb
 	# ./build/debug/gameboy ../tetris.gb
@@ -12,11 +18,11 @@ test: gb
 
 debug: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/debug
-	g++ -g -std=c++17 -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
+	g++ -g $(CPPFLAGS) -o ./build/debug/gameboy $(SOURCE) $(LDFLAGS)
 
 release: $(SOURCE) gb.h instructions.h register.h utils.h bus.h
 	mkdir -p build/release
-	g++ -O3 -std=c++17 -o ./build/release/gameboy $(SOURCE) $(LDFLAGS)
+	g++ -O3 $(CPPFLAGS) -o ./build/release/gameboy $(SOURCE) $(LDFLAGS)
 
 validate01: debug
 	./build/debug/gameboy "../gb-test-roms/cpu_instrs/individual/01-special.gb" > /dev/null

@@ -7,13 +7,16 @@
 
 #include "bus.h"
 
-constexpr int SCALE = 3;
+constexpr int SCALE = 6;
 constexpr int WIDTH = 160;
 constexpr int HEIGHT = 144;
 constexpr int BYTES_PER_PIXEL = 3;
 
 class PPU {
 public:
+  uint8_t internalLY = 0;
+  uint8_t internalLX = 0;
+
   bool joypadDown = false;
   bool joypadUp = false;
   bool joypadLeft = false;

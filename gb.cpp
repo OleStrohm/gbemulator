@@ -319,51 +319,58 @@ int main(int argc, char **argv) {
   cpu.loadBoot(util::readFile("boot.bin"));
   // cpu.dumpBoot();
 
-  using cycles = std::chrono::duration<double, std::ratio<4, 4'194'304>>;
-
   auto syncTimer = std::chrono::high_resolution_clock::now();
 
-  auto lastTime = std::chrono::high_resolution_clock::now();
   auto fpsCounter = std::chrono::high_resolution_clock::now();
 
   int cyclesPS = 0;
+  int cyclesPF = 0;
+  uint64_t cumulativeFrameTime = 0;
 
   std::thread th(startRenderLoop, &ppu);
 
   while (!ppu.isClosed()) {
     auto now = std::chrono::high_resolution_clock::now();
-    auto cycleCount =
-        std::chrono::duration_cast<cycles>(now - lastTime).count();
     auto fpsElapsed =
         std::chrono::duration_cast<std::chrono::seconds>(now - fpsCounter)
             .count();
 
-    while (cycleCount > 1.0) {
-      lastTime =
-          lastTime +
-          std::chrono::duration_cast<std::chrono::nanoseconds>(cycles(1.0));
+    for (int i = 0; i < 1000; i++) {
       cyclesPS++;
-      cycleCount -= 1.0;
+      cyclesPF++;
       ppu.step();
       cpu.step();
+
+      if (cyclesPF == 17'556) {
+        auto syncNow = std::chrono::high_resolution_clock::now();
+        auto syncTime = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            syncNow - syncTimer)
+                            .count();
+        // printf("Frame time: %f ms, did %i cycles\n", syncTime / 1'000'000.0f,
+        // cyclesPF);
+        cumulativeFrameTime += syncTime;
+        cyclesPF = 0;
+
+        // TODO: fix this
+        if (syncTime < 1'000'000'000 / 60) {
+          uint64_t sleepTime = (1'000'000'000 / 60) - syncTime;
+		  // printf("Sleeping for: %f ms\n", sleepTime / 1'000'000.0f);
+		  std::this_thread::sleep_for(std::chrono::nanoseconds(sleepTime));
+        }
+        syncTimer = std::chrono::high_resolution_clock::now();
+        break;
+      }
     }
 
     if (fpsElapsed > 1.0) {
       fpsCounter += std::chrono::seconds(1);
       printf("FPS: %d\n", ppu.getFrame());
       printf("CYCLES: %d\n", cyclesPS);
+      printf("Time per frame: %f\n",
+             (cumulativeFrameTime / (float)ppu.getFrame()) / 1'000'000.0f);
       ppu.setFrame(0);
       cyclesPS = 0;
-    }
-
-    if (ppu.getLY() == 0 && ppu.getLX() == 0) {
-      auto syncNow = std::chrono::high_resolution_clock::now();
-      auto syncTime = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                          syncNow - syncTimer)
-                          .count();
-      // TODO: fix this
-      std::this_thread::sleep_for(
-          std::chrono::nanoseconds((1'000'000'000 - syncTime) / 60));
+      cumulativeFrameTime = 0;
     }
   }
 
