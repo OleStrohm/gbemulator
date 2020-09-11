@@ -88,7 +88,7 @@ bool CPU::step() {
   if (!instr) {
     // if (registers.pc >= 0x100)
     //  std::this_thread::sleep_for(std::chrono::seconds(100));
-    if (interruptsEnabled && IF) {
+    if (interruptsEnabled && IF & IE) {
       uint16_t interruptAddress = 0xFFFF;
       if (IE & interruptVblank && IF & interruptVblank) {
         interruptAddress = interruptVblankAddress;
@@ -116,8 +116,6 @@ bool CPU::step() {
 
         registers.pc = interruptAddress;
         return !breakpoint;
-      } else {
-        IF = 0;
       }
     }
     if (logRegisters) {

@@ -28,7 +28,7 @@ public:
 
 private:
   Bus *bus;
-  
+
   uint8_t inputMask = 0;
 
   uint8_t LCDC;
@@ -67,12 +67,19 @@ private:
   bool hasSetUp;
   std::mutex mtx;
 
+  // Just ImGui things
+  unsigned int tileMapPBO;
+  unsigned int tileMapViewer;
+  unsigned int tileMapWidth = 16 * 8;
+  unsigned int tileMapHeight = 24 * 8;
+
 public:
   PPU(Bus *bus);
 
   void step();
   int8_t getColorForTile(uint16_t baseAddr, bool signedTileIndex, uint8_t index,
                          uint8_t x, uint8_t y);
+  int8_t getColorForTileWholeMap(uint16_t index, uint8_t x, uint8_t y);
 
   void setup();
   void render();

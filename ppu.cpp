@@ -1,9 +1,10 @@
 #include "ppu.h"
 #include "utils.h"
 
-#include <imgui/imgui.h>
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
+#include <GLFW/glfw3.h>
+#include <imgui/imgui.h>
 
 #include <bits/stdint-uintn.h>
 #include <chrono>
@@ -237,6 +238,8 @@ void PPU::setup() {
     exit(1);
   }
 
+  glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_TRUE);
+
   glfwMakeContextCurrent(window);
 
   if (glewInit() != GLEW_OK) {
@@ -248,11 +251,32 @@ void PPU::setup() {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO &io = ImGui::GetIO();
+  (void)io;
 
   ImGui::StyleColorsDark();
 
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init("#version 130");
+
+  glGenTextures(1, &tileMapViewer);
+  glBindTexture(GL_TEXTURE_2D, tileMapViewer);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16 * 8, 12 * 8, 0, GL_RGB,
+               GL_UNSIGNED_BYTE, 0);
+  glBindTexture(GL_TEXTURE_2D, tileMapViewer);
+
+  glGenBuffers(1, &tileMapPBO);
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, tileMapPBO);
+
+  glBufferData(GL_PIXEL_UNPACK_BUFFER, tileMapWidth * tileMapHeight * 3, 0,
+               GL_STATIC_DRAW);
+  glBindTexture(GL_PIXEL_UNPACK_BUFFER, 0);
 
   unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
   const GLchar *vertexSource = vertexShaderSource.c_str();
@@ -302,8 +326,8 @@ void PPU::setup() {
   glGenTextures(1, &screenTexture);
   glBindTexture(GL_TEXTURE_2D, screenTexture);
 
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -547,26 +571,60 @@ void PPU::render() {
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
 
-    //if (invalidated) {
-    //  invalidated = false;
+    if (invalidated) {
+      invalidated = false;
 
-    //  mtx.lock(); // TODO: go back to editing textureData directly
-    //  memcpy(textureData, pixels, HEIGHT * WIDTH * BYTES_PER_PIXEL);
-    //  mtx.unlock();
-    //  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+      mtx.lock(); // TODO: go back to editing textureData directly
+      memcpy(textureData, pixels, HEIGHT * WIDTH * BYTES_PER_PIXEL);
+      mtx.unlock();
+      glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
 
-    //  glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    //  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
-    //               GL_UNSIGNED_BYTE, 0);
-    //  textureData =
-    //      (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-    //  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    //  if (!textureData) {
-    //    std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
-    //    GLenum err = glGetError();
-    //    std::cerr << "OpenGL Error: " << err << std::endl;
-    //  }
-    //}
+      glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+      glBindTexture(GL_TEXTURE_2D, screenTexture);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
+                   GL_UNSIGNED_BYTE, 0);
+      textureData =
+          (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+      glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+      if (!textureData) {
+        std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
+        GLenum err = glGetError();
+        std::cerr << "OpenGL Error: " << err << std::endl;
+      }
+
+      glBindBuffer(GL_PIXEL_UNPACK_BUFFER, tileMapPBO);
+      GLubyte *tilemap =
+          (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+
+      mtx.lock();
+      for (int y = 0; y < tileMapHeight / 8; y++) {
+        for (int x = 0; x < tileMapWidth / 8; x++) {
+          for (int yt = 0; yt < 8; yt++) {
+            for (int xt = 0; xt < 8; xt++) {
+              int color = getColorForTileWholeMap(y * 16 + x, xt, yt);
+              color = color * 0xFF / 3;
+              color = color & 0xFF;
+              color = (color << 16) | (color << 8) | color;
+
+              tilemap[3 * ((8 * y + yt) * tileMapWidth + 8 * x + xt) + 0] =
+                  color;
+              tilemap[3 * ((8 * y + yt) * tileMapWidth + 8 * x + xt) + 1] =
+                  color;
+              tilemap[3 * ((8 * y + yt) * tileMapWidth + 8 * x + xt) + 2] =
+                  color;
+            }
+          }
+        }
+      }
+      mtx.unlock();
+
+      glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+      glBindTexture(GL_TEXTURE_2D, tileMapViewer);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tileMapWidth, tileMapHeight, 0,
+                   GL_RGB, GL_UNSIGNED_BYTE, 0);
+      glBindTexture(GL_TEXTURE_2D, 0);
+      glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    }
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -578,26 +636,40 @@ void PPU::render() {
       ImGui::Begin("Hello World!");
 
       ImGui::Text("Useful text!");
-      ImGui::Checkbox("Show VRAM", &showVRAM);
+      {
+        ImGui::Text("Show VRAM Here:");
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvailWidth() * 0.5f);
+        float width = ImGui::GetContentRegionAvailWidth() * 0.8f;
+        ImGui::Image(
+            (void *)(intptr_t)tileMapViewer,
+            ImVec2(width, width * tileMapHeight / (float)tileMapWidth));
+      }
 
       ImGui::End();
     }
 
-	ImGui::Render();
-	int display_w, display_h;
-	glfwGetFramebufferSize(window, &display_w, &display_h);
-	glViewport(0, 0, display_w, display_h);
-	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+    ImGui::Render();
+    int display_w, display_h;
+    glfwGetFramebufferSize(window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-	// glUseProgram(shaderProgram);
-	// glBindTexture(GL_TEXTURE_2D, screenTexture);
-	// glBindVertexArray(vao);
-	// glDrawArrays(GL_TRIANGLES, 0, 6);
-	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glUseProgram(shaderProgram);
+    glBindTexture(GL_TEXTURE_2D, screenTexture);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     glfwSwapBuffers(window);
   }
+}
+
+int8_t PPU::getColorForTileWholeMap(uint16_t index, uint8_t x, uint8_t y) {
+  uint16_t addr = 0x8000 + 0x10 * index + 2 * y;
+  return ((read(addr) >> (7 - x)) & 0x1) |
+         (((read(addr + 1) >> (7 - x)) & 0x1) << 1);
 }
 
 int8_t PPU::getColorForTile(uint16_t baseAddr, bool signedTileIndex,
