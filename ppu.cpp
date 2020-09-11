@@ -1,4 +1,3 @@
-#define IMGUI_IMPL_OPENGL_LOADER_GLEW
 #include "ppu.h"
 #include "utils.h"
 
@@ -329,6 +328,7 @@ void PPU::setup() {
   glViewport(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
 
   textureData = (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
   pixels = new uint8_t[WIDTH * HEIGHT * BYTES_PER_PIXEL];
 
   glfwSetWindowUserPointer(window, this);
@@ -554,11 +554,14 @@ void PPU::render() {
     //  mtx.lock(); // TODO: go back to editing textureData directly
     //  memcpy(textureData, pixels, HEIGHT * WIDTH * BYTES_PER_PIXEL);
     //  mtx.unlock();
+    //  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+
     //  glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     //  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB,
     //               GL_UNSIGNED_BYTE, 0);
     //  textureData =
     //      (GLubyte *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+    //  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     //  if (!textureData) {
     //    std::cerr << "Couldn't Map Pixel Buffer!" << std::endl;
     //    GLenum err = glGetError();

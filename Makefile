@@ -1,6 +1,6 @@
 GBSOURCE = gb.cpp ppu.cpp bus.cpp instructions.cpp utils.cpp
 IMGUISOURCE = deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_widgets.cpp deps/imgui/imgui_demo.cpp imgui/imgui_impl_glfw.cpp imgui/imgui_impl_opengl3.cpp
-CPPFLAGS = -std=c++17 -Ideps
+CPPFLAGS = -std=c++17 -Ideps -DIMGUI_IMPL_OPENGL_LOADER_GLEW
 LDFLAGS = `pkg-config --static --libs glfw3` -lGLEW -lGL
 
 SOURCE = $(GBSOURCE) $(IMGUISOURCE)
