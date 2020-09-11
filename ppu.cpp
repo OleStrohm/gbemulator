@@ -245,6 +245,15 @@ void PPU::setup() {
     exit(1);
   }
 
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO &io = ImGui::GetIO();
+
+  ImGui::StyleColorsDark();
+
+  ImGui_ImplGlfw_InitForOpenGL(window, true);
+  ImGui_ImplOpenGL3_Init("#version 130");
+
   unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
   const GLchar *vertexSource = vertexShaderSource.c_str();
   glShaderSource(vertexShader, 1, &vertexSource, NULL);
@@ -533,17 +542,7 @@ void PPU::step() {
 }
 
 void PPU::render() {
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGuiIO &io = ImGui::GetIO();
-  io.Fonts->AddFontDefault();
-
-  // ImGui::StyleColorsDark();
-
-  ImGui_ImplGlfw_InitForOpenGL(window, true);
-  ImGui_ImplOpenGL3_Init("#version 130");
-
-  bool showDemoWindow = true;
+  bool showVRAM = true;
 
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
@@ -573,36 +572,32 @@ void PPU::render() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::ShowDemoWindow(&showDemoWindow);
+    ImGui::ShowDemoWindow();
 
     {
       ImGui::Begin("Hello World!");
 
       ImGui::Text("Useful text!");
-      ImGui::Checkbox("Demo Window", &showDemoWindow);
+      ImGui::Checkbox("Show VRAM", &showVRAM);
 
       ImGui::End();
     }
 
-    ImGui::Render();
-    int display_w, display_h;
-    glfwGetFramebufferSize(window, &display_w, &display_h);
-    glViewport(0, 0, display_w, display_h);
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+	ImGui::Render();
+	int display_w, display_h;
+	glfwGetFramebufferSize(window, &display_w, &display_h);
+	glViewport(0, 0, display_w, display_h);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
 
-    // glUseProgram(shaderProgram);
-    // glBindTexture(GL_TEXTURE_2D, screenTexture);
-    // glBindVertexArray(vao);
-    // glDrawArrays(GL_TRIANGLES, 0, 6);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	// glUseProgram(shaderProgram);
+	// glBindTexture(GL_TEXTURE_2D, screenTexture);
+	// glBindVertexArray(vao);
+	// glDrawArrays(GL_TRIANGLES, 0, 6);
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     glfwSwapBuffers(window);
   }
-
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplGlfw_Shutdown();
-  ImGui::DestroyContext();
 }
 
 int8_t PPU::getColorForTile(uint16_t baseAddr, bool signedTileIndex,
@@ -617,6 +612,10 @@ void PPU::cleanup() {
   glDeleteVertexArrays(1, &vao);
   glDeleteBuffers(1, &vbo);
   glDeleteProgram(shaderProgram);
+
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
 
   glfwDestroyWindow(window);
   glfwTerminate();
