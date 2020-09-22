@@ -269,14 +269,14 @@ void PPU::setup() {
 
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16 * 8, 12 * 8, 0, GL_RGB,
                GL_UNSIGNED_BYTE, 0);
-  glBindTexture(GL_TEXTURE_2D, tileMapViewer);
+  glBindTexture(GL_TEXTURE_2D, 0);
 
   glGenBuffers(1, &tileMapPBO);
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, tileMapPBO);
 
   glBufferData(GL_PIXEL_UNPACK_BUFFER, tileMapWidth * tileMapHeight * 3, 0,
-               GL_STATIC_DRAW);
-  glBindTexture(GL_PIXEL_UNPACK_BUFFER, 0);
+               GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
   unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
   const GLchar *vertexSource = vertexShaderSource.c_str();
@@ -356,7 +356,7 @@ void PPU::setup() {
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
 
   glBufferData(GL_PIXEL_UNPACK_BUFFER, WIDTH * HEIGHT * BYTES_PER_PIXEL, 0,
-               GL_STATIC_DRAW);
+               GL_DYNAMIC_DRAW);
 
   glViewport(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
 
