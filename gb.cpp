@@ -128,28 +128,19 @@ bool CPU::step() {
     }
 
     instr = instruction::decode(opcode);
-    if (instr->getType() != instruction::Nop) {
-      // printf("0x%04X: %02X | ", registers.pc, opcode);
-      // util::printfBits("", opcode, 8);
-      // printf("\tInstruction: %s\n", instr->getName().c_str());
-    }
-
-    if (instr->getType() == instruction::Unsupported) {
-      printf("Unsupported instruction\n");
-      breakpoint = true;
-    }
-  } else if (!instr->isFinished()) {
-    instr->amend(opcode);
-  }
-
   if (hasRecoveredFromHalt)
     registers.pc++;
+
+  } else if (!instr->isFinished()) {
+    instr->amend(opcode);
+  if (hasRecoveredFromHalt)
+    registers.pc++;
+
+  }
 
   if (instr->isFinished()) {
     if (instr->execute(this))
       instr = nullptr;
-    else if (hasRecoveredFromHalt)
-      registers.pc--;
   }
 
   if (timerHasOverflowed) {
